@@ -608,6 +608,15 @@ GEM TX kick's live NCR reads with the software `ncr_shadow` stopped after
 The NCR readback/barrier sequence is therefore required on this hardware.
 Both changes were reverted before restoring the retained image.
 
+Protecting the pbuf reference counter with a separate aligned RT-Thread
+spinlock avoided the halfword-atomic failure long enough to complete the
+15-second stage at 717.9 Mbit/s (1,376,905,584 bytes). It still failed the
+60-second acceptance run: transmission stopped after 1,987,950,624 bytes and
+the board lost ICMP connectivity. The change was reverted. Because this stop
+is close to the signed 32-bit byte boundary, future work must audit lwiperf
+and diagnostic byte/time counters as well as pbuf lifetime ordering before
+another reference-lock experiment. It is not part of the retained image.
+
 The next TX direction is single-descriptor ring batching: prepare several
 complete contiguous frames, publish their descriptors together, and perform
 one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again
