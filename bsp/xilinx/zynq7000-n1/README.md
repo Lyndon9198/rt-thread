@@ -561,6 +561,25 @@ but its 60-second run stopped after 2,040,182,124 bytes and left networking
 unresponsive. It was rejected and the retained image remains the 520.2
 Mbit/s ring-batching plus cache-clean-only version.
 
+Replacing the SMP `SYS_ARCH_PROTECT` recursive mutex globally with an IRQ-save
+spinlock exposed substantial lock overhead: a 5-second reverse run reached
+714.0 Mbit/s. It is not safe, however. The first version stopped after
+833,746,164 bytes during a 15-second run and left networking unresponsive.
+A per-CPU nesting-aware version removed same-CPU recursive acquisition and
+reached 682.0 Mbit/s for 5 seconds, but stopped after 875,490,484 bytes in the
+15-second run and again lost all ICMP replies. This indicates a remaining
+cross-CPU lock-order or long IRQ-disabled dependency, not merely recursive
+entry. Both variants were rejected and the recursive mutex was restored.
+
+Do not retry a global spinlock for `SYS_ARCH_PROTECT`. The next low-impact
+direction is to leave lwIP core logic and its global protection semantics
+unchanged, then reduce only the measured hot-path overhead: use RT-Thread's
+existing SMP-safe fixed-block allocator for the TX pbuf/memp pools, measure
+the `memp_malloc` and `pbuf_alloc` portions independently, and retain a change
+only after 5-, 15-, and 60-second reverse runs plus post-test ping. A second
+candidate is driver-local preallocation/recycling of contiguous TX staging
+buffers; it avoids changing lwIP locking and does not require a new TCP path.
+
 The next TX direction is single-descriptor ring batching: prepare several
 complete contiguous frames, publish their descriptors together, and perform
 one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again
