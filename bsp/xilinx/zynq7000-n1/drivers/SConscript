@@ -1,0 +1,7 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c') + Glob('*.S')
+group = DefineGroup('Drivers', src, depend=[''], CPPPATH=[cwd])
+
+Return('group')

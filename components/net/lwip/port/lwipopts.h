@@ -280,9 +280,24 @@
 #define LWIP_ALLOW_MEM_FREE_FROM_OTHER_CONTEXT 1
 
 //#define MEM_LIBC_MALLOC             1
+#if defined(SOC_XILINX_ZYNQ7000)
+/* pooled heap: O(1) allocation instead of rt_malloc per TX segment */
+#define MEM_USE_POOLS               1
+#define MEMP_USE_CUSTOM_POOLS       1
+#else
 //#define MEM_USE_POOLS               1
 //#define MEMP_USE_CUSTOM_POOLS       1
+#endif
+/*
+ * N1: the stock 1600-byte heap cannot hold more than one 1500-byte TX pbuf,
+ * which serializes tcp_write in the reverse-throughput test. Size it for the
+ * 256 KiB TCP send buffer plus RX slack.
+ */
+#if defined(SOC_XILINX_ZYNQ7000)
+#define MEM_SIZE                    (1024*512)
+#else
 //#define MEM_SIZE                    (1024*64)
+#endif
 
 #define MEMP_MEM_MALLOC             0
 
@@ -331,12 +346,17 @@
    for sequential API communication and incoming packets. Used in
    src/api/tcpip.c. */
 // #define MEMP_NUM_TCPIP_MSG_API      16
-// #define MEMP_NUM_TCPIP_MSG_INPKT    16
+#ifdef RT_LWIP_TCPTHREAD_MBOX_SIZE
+#define MEMP_NUM_TCPIP_MSG_INPKT      RT_LWIP_TCPTHREAD_MBOX_SIZE
+#endif
 
 /* ---------- Pbuf options ---------- */
 /* PBUF_POOL_SIZE: the number of buffers in the pbuf pool. */
 #ifdef RT_LWIP_PBUF_NUM
 #define PBUF_POOL_SIZE               RT_LWIP_PBUF_NUM
+#if defined(SOC_XILINX_ZYNQ7000)
+#define LWIP_SUPPORT_CUSTOM_PBUF     1
+#endif
 #endif
 
 /* PBUF_POOL_BUFSIZE: the size of each pbuf in the pbuf pool. */
@@ -346,7 +366,17 @@
 
 /* PBUF_LINK_HLEN: the number of bytes that should be allocated for a
    link level header. */
-#define PBUF_LINK_HLEN              16
+#if defined(SOC_XILINX_ZYNQ7000)
+/*
+ * 18 instead of 16: with the ethernet header built 14 bytes before the IP
+ * header, the outgoing frame starts at (TRANSPORT offset - 20 - 14) =
+ * (18 + 20 + 20 - 34) = +24, which is word aligned, so the GEM can DMA the
+ * frame zero-copy from a single descriptor. The stock 16 yields +22.
+ */
+#define PBUF_LINK_HLEN              18
+#else
+#define PBUF_LINK_HLEN              23
+#endif
 
 #ifdef RT_LWIP_ETH_PAD_SIZE
 #define ETH_PAD_SIZE                RT_LWIP_ETH_PAD_SIZE
@@ -369,10 +399,18 @@
 
 /* Controls if TCP should queue segments that arrive out of
    order. Define to 0 if your device is low on memory. */
+#if defined(SOC_XILINX_ZYNQ7000)
+#define TCP_QUEUE_OOSEQ             0
+#else
 #define TCP_QUEUE_OOSEQ             1
+#endif
 
 /* TCP Maximum segment size. */
+#if defined(SOC_XILINX_ZYNQ7000)
 #define TCP_MSS                     1460
+#else
+#define TCP_MSS                     1460
+#endif
 
 /* TCP sender buffer space (bytes). */
 #ifdef RT_LWIP_TCP_SND_BUF
@@ -398,6 +436,47 @@
 #define TCP_WND                     (TCP_MSS * 2)
 #endif
 
+/*
+ * RFC 1323 window scaling. Without it TCP_WND is clamped to 16 bits, so a
+ * 64 KiB window caps host->board throughput at window/RTT (~630 Mbit/s on
+ * this link). Enabling scaling lets TCP_WND above 65535 be negotiated.
+ * TCP_RCV_SCALE must keep (TCP_WND >> TCP_RCV_SCALE) <= 0xFFFF.
+ */
+#define LWIP_WND_SCALE              1
+#define TCP_RCV_SCALE               4
+
+/*
+ * RX uses zero-copy PBUF_REF pbufs backed by the fixed 1 MiB non-cacheable
+ * GEM DMA ring, not the pbuf pool, so the pool-based TCP_WND sanity check
+ * does not apply here.
+ */
+#define LWIP_DISABLE_TCP_SANITY_CHECKS 1
+
+/*
+ * N1 GEM0: each empty ACK costs ~11 us of erx-thread time (the whole TX
+ * path). Batch data ACKs to every Nth segment instead of the default
+ * every-2nd alternating scheme, and raise the window-update watermark so
+ * the board stops emitting a separate window-update ACK every 4 segments.
+ * 0 keeps the stock lwIP behavior.
+ */
+#if defined(SOC_XILINX_ZYNQ7000)
+/*
+ * Build each outgoing frame as one contiguous pbuf so the GEM can DMA it
+ * zero-copy from the pbuf payload (single descriptor) instead of the driver
+ * copying 1460 bytes into the non-cacheable TX window per segment.
+ */
+#define LWIP_NETIF_TX_SINGLE_PBUF     1
+#endif
+#if defined(SOC_XILINX_ZYNQ7000)
+#define TCP_ACK_EVERY_NTH           4
+#define LWIP_CHECKSUM_ON_COPY       1
+#else
+#define TCP_ACK_EVERY_NTH           0
+#endif
+#if defined(SOC_XILINX_ZYNQ7000)
+#define TCP_WND_UPDATE_THRESHOLD    LWIP_MIN((TCP_WND / 4), (TCP_MSS * 16))
+#endif
+
 /* Maximum number of retransmissions of data segments. */
 #define TCP_MAXRTX                  12
 
@@ -415,6 +494,9 @@
 #define TCPIP_THREAD_STACKSIZE      4096
 #endif
 #define TCPIP_THREAD_NAME           "tcpip"
+#if defined(SOC_XILINX_ZYNQ7000)
+#define LWIP_TCPIP_CORE_LOCKING_INPUT 1
+#endif
 #define DEFAULT_TCP_RECVMBOX_SIZE   10
 
 /* ---------- ARP options ---------- */
@@ -432,6 +514,10 @@
 #define CHECKSUM_CHECK_UDP              0
 #define CHECKSUM_CHECK_TCP              0
 #define CHECKSUM_CHECK_ICMP             0
+#elif defined(SOC_XILINX_ZYNQ7000)
+#define CHECKSUM_CHECK_IP               0
+#define CHECKSUM_CHECK_UDP              0
+#define CHECKSUM_CHECK_TCP              0
 #endif
 
 /* ---------- IP options ---------- */

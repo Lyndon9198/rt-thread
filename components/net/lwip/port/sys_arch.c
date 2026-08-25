@@ -564,11 +564,14 @@ rt_weak void mem_init(void)
 {
 }
 
+#if !defined(MEM_USE_POOLS) && !defined(MEM_LIBC_MALLOC)
 void *mem_calloc(mem_size_t count, mem_size_t size)
 {
     return rt_calloc(count, size);
 }
+#endif
 
+#if !defined(MEM_USE_POOLS) && !defined(MEM_LIBC_MALLOC)
 void *mem_trim(void *mem, mem_size_t size)
 {
     // return rt_realloc(mem, size);
@@ -585,6 +588,7 @@ void  mem_free(void *mem)
 {
     rt_free(mem);
 }
+#endif /* !MEM_USE_POOLS && !MEM_LIBC_MALLOC */
 
 #ifdef RT_LWIP_PPP
 u32_t sio_read(sio_fd_t fd, u8_t *buf, u32_t size)
@@ -625,7 +629,7 @@ void ppp_trace(int level, const char *format, ...)
 #endif /* RT_LWIP_PPP */
 
 #if LWIP_VERSION_MAJOR >= 2 /* >= v2.x */
-#if MEM_OVERFLOW_CHECK || MEMP_OVERFLOW_CHECK
+#if (MEM_OVERFLOW_CHECK || MEMP_OVERFLOW_CHECK) && !defined(MEM_USE_POOLS)
 /**
  * Check if a mep element was victim of an overflow or underflow
  * (e.g. the restricted area after/before it has been altered)

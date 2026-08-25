@@ -1,0 +1,90 @@
+/*
+ * Minimal RT-Thread hardware description for the N1 XC7Z020 board.
+ * Values are derived from N1_linux_display.xsa and the PetaLinux board DTS.
+ */
+
+/dts-v1/;
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+    compatible = "xlnx,zynq-7000";
+    #address-cells = <1>;
+    #size-cells = <1>;
+    interrupt-parent = <&gic>;
+
+    chosen {
+        bootargs = "console=uart0";
+    };
+
+    aliases {
+        ethernet0 = &gem0;
+    };
+
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        cpu@0 {
+            compatible = "arm,cortex-a9";
+            device_type = "cpu";
+            reg = <0>;
+        };
+
+        cpu@1 {
+            compatible = "arm,cortex-a9";
+            device_type = "cpu";
+            reg = <1>;
+        };
+    };
+
+    memory@200000 {
+        device_type = "memory";
+        reg = <0x00200000 0x1fe00000>;
+    };
+
+    pclk: pclk {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <111111111>;
+    };
+
+    txclk: txclk {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <125000000>;
+    };
+
+    amba {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        gic: interrupt-controller@f8f01000 {
+            compatible = "arm,cortex-a9-gic";
+            interrupt-controller;
+            #address-cells = <0>;
+            #interrupt-cells = <3>;
+            reg = <0xf8f01000 0x1000>,
+                  <0xf8f00100 0x100>;
+        };
+
+        gem0: ethernet@e000b000 {
+            compatible = "cdns,zynq-gem", "cdns,gem";
+            reg = <0xe000b000 0x1000>;
+            interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
+            clocks = <&pclk>, <&pclk>, <&txclk>, <&txclk>;
+            clock-names = "pclk", "hclk", "tx_clk", "rx_clk";
+            phy-mode = "rgmii-id";
+            phy-handle = <&phy0>;
+            local-mac-address = [00 0a 35 00 1e 53];
+
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            phy0: ethernet-phy@7 {
+                reg = <7>;
+            };
+        };
+    };
+};

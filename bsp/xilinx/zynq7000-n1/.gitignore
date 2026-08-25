@@ -1,0 +1,11 @@
+/.config.old
+/.sconsign.dblite
+/__pycache__/
+/build/
+/*.bin
+/*.elf
+/*.map
+/*.asm
+/*.o
+/applications/*.o
+/drivers/*.o

@@ -306,6 +306,9 @@ struct tcp_pcb {
 
   /* fast retransmit/recovery */
   u8_t dupacks;
+#if TCP_ACK_EVERY_NTH > 0
+  u8_t ack_cnt; /* segments since last data ACK (delayed-ACK batching) */
+#endif
   u32_t lastack; /* Highest acknowledged seqno. */
 
   /* congestion avoidance/control variables */

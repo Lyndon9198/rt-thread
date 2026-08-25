@@ -98,6 +98,7 @@
 #define GEM_NCFGR_GBE                           RT_BIT(10)  /* 1000 Mbps (GEM) */
 #define GEM_NCFGR_BIG                           RT_BIT(8)   /* Receive 1536-byte frames */
 #define GEM_NCFGR_DRFCS                         RT_BIT(17)  /* Discard RX FCS */
+#define GEM_NCFGR_RXCOEN                        RT_BIT(24)  /* RX checksum offload */
 
 /* DBW in NCFGR bits [22:21] */
 #define GEM_NCFGR_DBW_SHIFT                     21
@@ -236,9 +237,18 @@ struct macb_dma_desc_64
     rt_uint32_t resvd;
 };
 
+#if defined(SOC_XILINX_ZYNQ7000)
+#define MACB_RX_RING_SIZE                       512
+#define MACB_TX_RING_SIZE                       128
+#else
 #define MACB_RX_RING_SIZE                       32
 #define MACB_TX_RING_SIZE                       16
+#endif
+#if defined(SOC_XILINX_ZYNQ7000)
 #define MACB_RX_BUFFER_SIZE                     1536
+#else
+#define MACB_RX_BUFFER_SIZE                     1536
+#endif
 
 /* RXBS encoding: buffer_bytes / 64 */
 #define MACB_RX_BUFFER_SIZE_DIV64               (MACB_RX_BUFFER_SIZE / 64)
@@ -285,6 +295,7 @@ struct macb_eth
     struct macb_dma_desc *tx_ring;
     rt_uint8_t *rx_buffer;
     rt_uint8_t *tx_buffer;
+    void *rx_pbufs;
     rt_size_t dma_blob_size;
     rt_ubase_t dma_blob_handle;
     rt_ubase_t rx_ring_dma;

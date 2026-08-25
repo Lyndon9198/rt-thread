@@ -389,6 +389,12 @@ tcp_write_checks(struct tcp_pcb *pcb, u16_t len)
 err_t
 tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
 {
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  rt_uint32_t tw_t0;
+  extern rt_uint32_t n1_pmu_cycle(void);
+
+  tw_t0 = n1_pmu_cycle();
+#endif
   struct pbuf *concat_p = NULL;
   struct tcp_seg *last_unsent = NULL, *seg = NULL, *prev_seg = NULL, *queue = NULL;
   u16_t pos = 0; /* position in 'arg' data */
@@ -792,6 +798,15 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
     TCPH_SET_FLAG(seg->tcphdr, TCP_PSH);
   }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  {
+    extern rt_uint64_t n1_tcpwrite_cycles;
+    extern rt_uint64_t n1_tcpwrite_calls;
+
+    n1_tcpwrite_cycles += (rt_uint32_t)(n1_pmu_cycle() - tw_t0);
+    n1_tcpwrite_calls++;
+  }
+#endif
   return ERR_OK;
 memerr:
   tcp_set_flags(pcb, TF_NAGLEMEMERR);

@@ -471,10 +471,25 @@ static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p)
     RT_ASSERT(netif != RT_NULL);
     enetif = (struct eth_device*)netif->state;
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    {
+        rt_uint32_t t0;
+        extern rt_uint32_t n1_pmu_cycle(void);
+        extern rt_uint64_t n1_tx_drv_cycles;
+
+        t0 = n1_pmu_cycle();
+        if (enetif->eth_tx(&(enetif->parent), p) != RT_EOK)
+        {
+            return ERR_IF;
+        }
+        n1_tx_drv_cycles += (rt_uint32_t)(n1_pmu_cycle() - t0);
+    }
+#else
     if (enetif->eth_tx(&(enetif->parent), p) != RT_EOK)
     {
         return ERR_IF;
     }
+#endif
 #endif
     return ERR_OK;
 }
@@ -506,7 +521,11 @@ static err_t eth_netif_device_init(struct netif *netif)
 
         /* copy device flags to netif flags */
         netif->flags = (ethif->flags & 0xff);
+#if defined(SOC_XILINX_ZYNQ7000)
         netif->mtu = ETHERNET_MTU;
+#else
+        netif->mtu = ETHERNET_MTU;
+#endif
 
         /* set output */
         netif->output       = etharp_output;
@@ -694,7 +713,11 @@ static err_t af_unix_eth_netif_device_init(struct netif *netif)
 
         /* copy device flags to netif flags */
         netif->flags = (ethif->flags & 0xff);
+#if defined(SOC_XILINX_ZYNQ7000)
         netif->mtu = ETHERNET_MTU;
+#else
+        netif->mtu = ETHERNET_MTU;
+#endif
 
         /* set output */
         netif->output       = etharp_output;
@@ -908,10 +931,87 @@ static void eth_tx_thread_entry(void* parameter)
 #endif
 
 #ifndef LWIP_NO_RX_THREAD
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+/*
+ * N1 GEM0 RX fast-path profiling (test harness). The erx thread is pinned
+ * to CPU1, so these counters are written only from that thread and need no
+ * locking. Cycles come from the Cortex-A9 PMU cycle counter; the 32-bit
+ * wrap-around is absorbed by unsigned subtraction.
+ */
+rt_uint64_t n1_rx_pmu_frames;
+rt_uint64_t n1_rx_pmu_drv_cycles;
+rt_uint64_t n1_rx_pmu_input_cycles;
+rt_uint64_t n1_stack_cycles;
+rt_uint64_t n1_stack_frames;
+rt_uint64_t n1_app_cycles;
+rt_uint64_t n1_proc_cycles;
+rt_uint64_t n1_ackout_cycles;
+rt_uint64_t n1_tx_drv_cycles;
+rt_uint64_t n1_ack_build_cycles;
+rt_uint64_t n1_ack_send_cycles;
+rt_uint64_t n1_tx_copy_cycles;
+rt_uint64_t n1_tx_kick_cycles;
+rt_uint64_t n1_tx_poll_cycles;
+rt_uint64_t n1_tcpwrite_cycles;
+rt_uint64_t n1_tcpwrite_calls;
+rt_uint64_t n1_sent_cycles;
+rt_uint64_t n1_tx_zero_calls;
+rt_uint64_t n1_tx_d_multi;
+rt_uint64_t n1_tx_d_len;
+rt_uint64_t n1_tx_d_align;
+rt_uint64_t n1_tx_d_custom;
+rt_uint64_t n1_tx_last_payload;
+rt_uint64_t n1_tx_diag_totlen;
+rt_uint64_t n1_tx_diag_len;
+rt_uint64_t n1_tx_diag_next;
+rt_uint64_t n1_tx_diag_type;
+rt_uint64_t n1_tx_diag_flags;
+static rt_uint32_t n1_rx_pmu_last;
+
+rt_inline void n1_rx_pmu_enable(void)
+{
+    rt_uint32_t pmcr, cntens;
+
+    __asm__ volatile ("mrc p15, 0, %0, c9, c12, 0" : "=r"(pmcr));
+    pmcr |= (1u << 0) | (1u << 1) | (1u << 2); /* E | P | C */
+    __asm__ volatile ("mcr p15, 0, %0, c9, c12, 0" :: "r"(pmcr));
+    cntens = ~0u;
+    __asm__ volatile ("mcr p15, 0, %0, c9, c12, 1" :: "r"(cntens));
+    __asm__ volatile ("mcr p15, 0, %0, c9, c12, 3" :: "r"(cntens));
+    __asm__ volatile ("isb" ::: "memory");
+}
+
+rt_uint32_t n1_pmu_cycle(void)
+{
+    rt_uint32_t cyc;
+
+    __asm__ volatile ("isb" ::: "memory");
+    __asm__ volatile ("mrc p15, 0, %0, c9, c13, 0" : "=r"(cyc));
+    return cyc;
+}
+
+rt_inline void n1_rx_pmu_start(void)
+{
+    n1_rx_pmu_last = n1_pmu_cycle();
+}
+
+rt_inline void n1_rx_pmu_acc(rt_uint64_t *acc)
+{
+    rt_uint32_t now = n1_pmu_cycle();
+
+    *acc += (rt_uint32_t)(now - n1_rx_pmu_last);
+    n1_rx_pmu_last = now;
+}
+#endif /* SOC_XILINX_ZYNQ7000 && RT_USING_SMP */
+
 /* Ethernet Rx Thread */
 static void eth_rx_thread_entry(void* parameter)
 {
     struct eth_device* device;
+
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    n1_rx_pmu_enable();
+#endif
 
     while (1)
     {
@@ -946,16 +1046,29 @@ static void eth_rx_thread_entry(void* parameter)
             {
                 if(device->eth_rx == RT_NULL) break;
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+                n1_rx_pmu_start();
+#endif
                 p = device->eth_rx(&(device->parent));
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+                n1_rx_pmu_acc(&n1_rx_pmu_drv_cycles);
+#endif
                 if (p != RT_NULL)
                 {
                     /* notify to upper layer */
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+                    n1_rx_pmu_start();
+#endif
                     if( device->netif->input(p, device->netif) != ERR_OK )
                     {
                         LWIP_DEBUGF(NETIF_DEBUG, ("ethernetif_input: Input error\n"));
                         pbuf_free(p);
                         p = NULL;
                     }
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+                    n1_rx_pmu_acc(&n1_rx_pmu_input_cycles);
+                    n1_rx_pmu_frames++;
+#endif
                 }
                 else break;
             }
@@ -993,6 +1106,10 @@ int eth_system_device_init_private(void)
                             &eth_rx_thread_stack[0], sizeof(eth_rx_thread_stack),
                             RT_ETHERNETIF_THREAD_PREORITY, 16);
     RT_ASSERT(result == RT_EOK);
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    /* Keep GEM IRQ handling on CPU0 and run the direct lwIP RX path on CPU1. */
+    rt_thread_control(&eth_rx_thread, RT_THREAD_CTRL_BIND_CPU, (void *)1);
+#endif
     result = rt_thread_startup(&eth_rx_thread);
     RT_ASSERT(result == RT_EOK);
 #endif
@@ -1009,6 +1126,10 @@ int eth_system_device_init_private(void)
                             &eth_tx_thread_stack[0], sizeof(eth_tx_thread_stack),
                             RT_ETHERNETIF_THREAD_PREORITY, 16);
     RT_ASSERT(result == RT_EOK);
+
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    rt_thread_control(&eth_tx_thread, RT_THREAD_CTRL_BIND_CPU, (void *)0);
+#endif
 
     result = rt_thread_startup(&eth_tx_thread);
     RT_ASSERT(result == RT_EOK);

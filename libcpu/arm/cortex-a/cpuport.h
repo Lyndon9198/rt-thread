@@ -102,6 +102,9 @@ rt_inline void rt_hw_dsb(void)
     __asm volatile ("dsb":::"memory");
 }
 
+#define rt_hw_wmb() __asm volatile ("dmb ishst" ::: "memory")
+#define rt_hw_rmb() __asm volatile ("dmb ish" ::: "memory")
+
 void _thread_start(void);
 
 #endif  /*CPUPORT_H__*/

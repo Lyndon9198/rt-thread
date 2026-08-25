@@ -47,6 +47,12 @@
 
 #include "lwip/apps/lwiperf.h"
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+#define LWIPERF_DBG(...) rt_kprintf(__VA_ARGS__)
+#else
+#define LWIPERF_DBG(...)
+#endif
+
 #include "lwip/tcp.h"
 #include "lwip/sys.h"
 
@@ -117,7 +123,7 @@ typedef struct _lwiperf_state_tcp {
 /** List of active iperf sessions */
 static lwiperf_state_base_t* lwiperf_all_connections;
 /** A const buffer to send from: we want to measure sending, not copying! */
-static const u8_t lwiperf_txbuf_const[1600] = {
+static const u8_t lwiperf_txbuf_const[1600] __attribute__((aligned(4))) = {
   '0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9',
   '0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9',
   '0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9',
@@ -294,12 +300,15 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
     } else {
       /* transmit data */
       /* @todo: every x bytes, transmit the settings again */
-      txptr = LWIP_CONST_CAST(void*, &lwiperf_txbuf_const[conn->bytes_transferred % 10]);
+      txptr = LWIP_CONST_CAST(void*, &lwiperf_txbuf_const[0]);
       txlen_max = TCP_MSS;
       if (conn->bytes_transferred == 48) { /* @todo: fix this for intermediate settings, too */
         txlen_max = TCP_MSS - 24;
       }
-      apiflags = 0; /* no copying needed */
+      /* Copy into one contiguous pbuf so the N1 GEM can DMA the frame
+       * zero-copy from a single descriptor (PBUF_ROM + header pbuf would
+       * be chained and force a driver-side copy instead). */
+      apiflags = TCP_WRITE_FLAG_COPY;
       send_more = 1;
     }
     txlen = txlen_max;
@@ -312,6 +321,8 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
 
     if (err == ERR_OK) {
       conn->bytes_transferred += txlen;
+      if ((conn->bytes_transferred % (5000 * TCP_MSS)) < (u32_t)txlen) {
+      }
     } else {
       send_more = 0;
     }
@@ -386,7 +397,7 @@ lwiperf_tx_start(lwiperf_state_tcp_t* conn)
 
   tcp_arg(newpcb, client_conn);
   tcp_sent(newpcb, lwiperf_tcp_client_sent);
-  tcp_poll(newpcb, lwiperf_tcp_poll, 2U);
+  tcp_poll(newpcb, lwiperf_tcp_poll, 1U);
   tcp_err(newpcb, lwiperf_tcp_err);
 
   ip_addr_copy(remote_addr, conn->conn_pcb->remote_ip);
@@ -527,6 +538,16 @@ lwiperf_tcp_poll(void *arg, struct tcp_pcb *tpcb)
 
   if (!conn->base.server) {
     lwiperf_tcp_client_send_more(conn);
+  } else {
+    /* server connection poll (tcpip thread): pump every client session so a
+     * later connection is not starved by the single erx thread */
+    lwiperf_state_base_t* base = lwiperf_all_connections;
+    while (base != NULL) {
+      if (!base->server) {
+        lwiperf_tcp_client_send_more((lwiperf_state_tcp_t*)base);
+      }
+      base = base->next;
+    }
   }
 
   return ERR_OK;
@@ -559,7 +580,7 @@ lwiperf_tcp_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
   /* setup the tcp rx connection */
   tcp_arg(newpcb, conn);
   tcp_recv(newpcb, lwiperf_tcp_recv);
-  tcp_poll(newpcb, lwiperf_tcp_poll, 2U);
+  tcp_poll(newpcb, lwiperf_tcp_poll, 1U);
   tcp_err(conn->conn_pcb, lwiperf_tcp_err);
 
   lwiperf_list_add(&conn->base);

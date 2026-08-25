@@ -435,7 +435,19 @@ tcp_input(struct pbuf *p, struct netif *inp)
       }
     }
     tcp_input_pcb = pcb;
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    {
+      rt_uint32_t proc_t0;
+      extern rt_uint32_t n1_pmu_cycle(void);
+      extern rt_uint64_t n1_proc_cycles;
+
+      proc_t0 = n1_pmu_cycle();
+      err = tcp_process(pcb);
+      n1_proc_cycles += (rt_uint32_t)(n1_pmu_cycle() - proc_t0);
+    }
+#else
     err = tcp_process(pcb);
+#endif
     /* A return value of ERR_ABRT means that tcp_abort() was called
        and that the pcb has been freed. If so, we don't do anything. */
     if (err != ERR_ABRT) {
@@ -465,7 +477,19 @@ tcp_input(struct pbuf *p, struct netif *inp)
           {
             acked16 = recv_acked;
 #endif
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+            {
+              rt_uint32_t sent_t0;
+              extern rt_uint32_t n1_pmu_cycle(void);
+              extern rt_uint64_t n1_sent_cycles;
+
+              sent_t0 = n1_pmu_cycle();
+              TCP_EVENT_SENT(pcb, (u16_t)acked16, err);
+              n1_sent_cycles += (rt_uint32_t)(n1_pmu_cycle() - sent_t0);
+            }
+#else
             TCP_EVENT_SENT(pcb, (u16_t)acked16, err);
+#endif
             if (err == ERR_ABRT) {
               goto aborted;
             }
@@ -498,7 +522,19 @@ tcp_input(struct pbuf *p, struct netif *inp)
           }
 
           /* Notify application that data has been received. */
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+          {
+            rt_uint32_t app_t0;
+            extern rt_uint32_t n1_pmu_cycle(void);
+            extern rt_uint64_t n1_app_cycles;
+
+            app_t0 = n1_pmu_cycle();
+            TCP_EVENT_RECV(pcb, recv_data, ERR_OK, err);
+            n1_app_cycles += (rt_uint32_t)(n1_pmu_cycle() - app_t0);
+          }
+#else
           TCP_EVENT_RECV(pcb, recv_data, ERR_OK, err);
+#endif
           if (err == ERR_ABRT) {
 #if TCP_QUEUE_OOSEQ && LWIP_WND_SCALE
             if (rest != NULL) {
@@ -550,7 +586,19 @@ tcp_input(struct pbuf *p, struct netif *inp)
           goto aborted;
         }
         /* Try to send something out. */
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+        {
+          rt_uint32_t ack_t0;
+          extern rt_uint32_t n1_pmu_cycle(void);
+          extern rt_uint64_t n1_ackout_cycles;
+
+          ack_t0 = n1_pmu_cycle();
+          tcp_output(pcb);
+          n1_ackout_cycles += (rt_uint32_t)(n1_pmu_cycle() - ack_t0);
+        }
+#else
         tcp_output(pcb);
+#endif
 #if TCP_INPUT_DEBUG
 #if TCP_DEBUG
         tcp_debug_print_state(pcb->state);

@@ -387,6 +387,12 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
   u16_t concat_chksummed = 0;
 #endif /* TCP_CHECKSUM_ON_COPY */
   err_t err;
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  rt_uint32_t tw_t0;
+  extern rt_uint32_t n1_pmu_cycle(void);
+
+  tw_t0 = n1_pmu_cycle();
+#endif
   /* don't allocate segments bigger than half the maximum window we ever received */
   u16_t mss_local = LWIP_MIN(pcb->mss, TCPWND_MIN16(pcb->snd_wnd_max/2));
   mss_local = mss_local ? mss_local : pcb->mss;
@@ -754,6 +760,16 @@ tcp_write(struct tcp_pcb *pcb, const void *arg, u16_t len, u8_t apiflags)
     TCPH_SET_FLAG(seg->tcphdr, TCP_PSH);
   }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  {
+    extern rt_uint32_t n1_pmu_cycle(void);
+    extern rt_uint64_t n1_tcpwrite_cycles;
+    extern rt_uint64_t n1_tcpwrite_calls;
+
+    n1_tcpwrite_cycles += (rt_uint32_t)(n1_pmu_cycle() - tw_t0);
+    n1_tcpwrite_calls++;
+  }
+#endif
   return ERR_OK;
 memerr:
   pcb->flags |= TF_NAGLEMEMERR;
@@ -924,6 +940,14 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
 #if LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP
   struct tcp_hdr *tcphdr;
 #endif /* LWIP_TCP_TIMESTAMPS || CHECKSUM_GEN_TCP */
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  rt_uint32_t sa_t0;
+  extern rt_uint32_t n1_pmu_cycle(void);
+  extern rt_uint64_t n1_ack_build_cycles;
+  extern rt_uint64_t n1_ack_send_cycles;
+
+  sa_t0 = n1_pmu_cycle();
+#endif
 
 #if LWIP_TCP_TIMESTAMPS
   if (pcb->flags & TF_TIMESTAMP) {
@@ -957,6 +981,16 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
   if (netif == NULL) {
     err = ERR_RTE;
   } else {
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    {
+      rt_uint32_t sa_t1;
+      extern rt_uint32_t n1_pmu_cycle(void);
+      extern rt_uint64_t n1_ack_build_cycles;
+      extern rt_uint64_t n1_ack_send_cycles;
+
+      sa_t1 = n1_pmu_cycle();
+      n1_ack_build_cycles += (rt_uint32_t)(sa_t1 - sa_t0);
+#endif
 #if CHECKSUM_GEN_TCP
     IF__NETIF_CHECKSUM_ENABLED(netif, NETIF_CHECKSUM_GEN_TCP) {
       tcphdr->chksum = ip_chksum_pseudo(p, IP_PROTO_TCP, p->tot_len,
@@ -967,6 +1001,10 @@ tcp_send_empty_ack(struct tcp_pcb *pcb)
     err = ip_output_if(p, &pcb->local_ip, &pcb->remote_ip,
       pcb->ttl, pcb->tos, IP_PROTO_TCP, netif);
     NETIF_SET_HWADDRHINT(netif, NULL);
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+      n1_ack_send_cycles += (rt_uint32_t)(n1_pmu_cycle() - sa_t1);
+    }
+#endif
   }
   pbuf_free(p);
 

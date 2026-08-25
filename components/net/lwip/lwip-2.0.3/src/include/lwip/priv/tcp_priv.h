@@ -430,6 +430,28 @@ void tcp_segs_free(struct tcp_seg *seg);
 void tcp_seg_free(struct tcp_seg *seg);
 struct tcp_seg *tcp_seg_copy(struct tcp_seg *seg);
 
+#if TCP_ACK_EVERY_NTH > 1
+/*
+ * Delayed-ACK batching: send a data ACK only every TCP_ACK_EVERY_NTH
+ * in-order segments (the ACK covers all of them). The pending ACK is
+ * flushed by tcp_fasttmr if the sender goes quiet. 0/1 keep the stock
+ * alternating every-2nd-segment behavior.
+ */
+#define tcp_ack(pcb)                               \
+  do {                                             \
+    if((pcb)->flags & TF_ACK_DELAY) {              \
+      if (++(pcb)->ack_cnt >= TCP_ACK_EVERY_NTH) { \
+        (pcb)->ack_cnt = 0;                        \
+        (pcb)->flags &= ~TF_ACK_DELAY;             \
+        (pcb)->flags |= TF_ACK_NOW;                \
+      }                                            \
+    }                                              \
+    else {                                         \
+      (pcb)->flags |= TF_ACK_DELAY;                \
+      (pcb)->ack_cnt = 1;                          \
+    }                                              \
+  } while (0)
+#else
 #define tcp_ack(pcb)                               \
   do {                                             \
     if((pcb)->flags & TF_ACK_DELAY) {              \
@@ -440,6 +462,7 @@ struct tcp_seg *tcp_seg_copy(struct tcp_seg *seg);
       (pcb)->flags |= TF_ACK_DELAY;                \
     }                                              \
   } while (0)
+#endif
 
 #define tcp_ack_now(pcb)                           \
   do {                                             \

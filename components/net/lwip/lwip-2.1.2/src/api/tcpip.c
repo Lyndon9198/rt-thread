@@ -243,7 +243,21 @@ tcpip_inpkt(struct pbuf *p, struct netif *inp, netif_input_fn input_fn)
   err_t ret;
   LWIP_DEBUGF(TCPIP_DEBUG, ("tcpip_inpkt: PACKET %p/%p\n", (void *)p, (void *)inp));
   LOCK_TCPIP_CORE();
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  {
+    rt_uint32_t t0;
+    extern rt_uint32_t n1_pmu_cycle(void);
+    extern rt_uint64_t n1_stack_cycles;
+    extern rt_uint64_t n1_stack_frames;
+
+    t0 = n1_pmu_cycle();
+    ret = input_fn(p, inp);
+    n1_stack_cycles += (rt_uint32_t)(n1_pmu_cycle() - t0);
+    n1_stack_frames++;
+  }
+#else
   ret = input_fn(p, inp);
+#endif
   UNLOCK_TCPIP_CORE();
   return ret;
 #else /* LWIP_TCPIP_CORE_LOCKING_INPUT */

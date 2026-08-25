@@ -445,6 +445,22 @@ void tcp_segs_free(struct tcp_seg *seg);
 void tcp_seg_free(struct tcp_seg *seg);
 struct tcp_seg *tcp_seg_copy(struct tcp_seg *seg);
 
+#if TCP_ACK_EVERY_NTH > 1
+#define tcp_ack(pcb)                               \
+  do {                                             \
+    if((pcb)->flags & TF_ACK_DELAY) {              \
+      if (++(pcb)->ack_cnt >= TCP_ACK_EVERY_NTH) { \
+        (pcb)->ack_cnt = 0;                        \
+        tcp_clear_flags(pcb, TF_ACK_DELAY);        \
+        tcp_ack_now(pcb);                          \
+      }                                            \
+    }                                              \
+    else {                                         \
+      tcp_set_flags(pcb, TF_ACK_DELAY);            \
+      (pcb)->ack_cnt = 1;                          \
+    }                                              \
+  } while (0)
+#else
 #define tcp_ack(pcb)                               \
   do {                                             \
     if((pcb)->flags & TF_ACK_DELAY) {              \
@@ -455,6 +471,7 @@ struct tcp_seg *tcp_seg_copy(struct tcp_seg *seg);
       tcp_set_flags(pcb, TF_ACK_DELAY);            \
     }                                              \
   } while (0)
+#endif
 
 #define tcp_ack_now(pcb)                           \
   tcp_set_flags(pcb, TF_ACK_NOW)
