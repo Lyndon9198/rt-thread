@@ -870,6 +870,54 @@ static void macb_poll_completions(struct macb_eth *eth)
     }
 }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+#define N1_TX_BATCH_MAX 32U
+
+static struct macb_eth *n1_tx_batch_eth;
+static rt_uint32_t n1_tx_batch_depth;
+static rt_uint32_t n1_tx_batch_pending;
+
+static void n1_macb_tx_batch_flush(void)
+{
+    struct macb_eth *eth = n1_tx_batch_eth;
+
+    if (eth == RT_NULL || n1_tx_batch_pending == 0)
+    {
+        return;
+    }
+    macb_gem_kick_tx(eth);
+    macb_gem_tx_restart(eth);
+    if (eth->irq_installed)
+    {
+        macb_poll_completions(eth);
+    }
+    else
+    {
+        macb_service_traffic(eth);
+    }
+    n1_tx_batch_pending = 0;
+}
+
+void n1_macb_tx_batch_begin(void)
+{
+    n1_tx_batch_depth++;
+}
+
+void n1_macb_tx_batch_end(void)
+{
+    if (n1_tx_batch_depth == 0)
+    {
+        return;
+    }
+    n1_tx_batch_depth--;
+    if (n1_tx_batch_depth == 0)
+    {
+        n1_macb_tx_batch_flush();
+        n1_tx_batch_eth = RT_NULL;
+    }
+}
+#endif
+
 static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
 {
     struct macb_eth *eth = raw_to_macb_eth(dev);
@@ -891,6 +939,18 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         return -RT_EINVAL;
     }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    if (n1_tx_batch_depth != 0)
+    {
+        n1_tx_batch_eth = eth;
+        while (rt_sem_take(&eth->tx_sem, 0) != RT_EOK)
+        {
+            n1_macb_tx_batch_flush();
+            macb_tx_cleanup(eth);
+        }
+    }
+    else
+#endif
     if (rt_sem_take(&eth->tx_sem, RT_WAITING_FOREVER) != RT_EOK)
     {
         return -RT_EBUSY;
@@ -968,7 +1028,7 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
             extern rt_uint64_t n1_tx_zero_calls;
             n1_tx_zero_calls++;
 #endif
-            rt_hw_cpu_dcache_clean_and_invalidate(p->payload, p->len);
+            rt_hw_cpu_dcache_clean(p->payload, p->len);
             buf_dma = (rt_uint64_t)(rt_uintptr_t)p->payload;
         }
         else
@@ -997,8 +1057,21 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         macb_desc_ring_sync(eth, RT_FALSE, RT_TRUE);
 
         eth->tx_head = NEXT_TX(eth->tx_head);
-        macb_gem_kick_tx(eth);
-        macb_gem_tx_restart(eth);
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+        if (n1_tx_batch_depth != 0)
+        {
+            n1_tx_batch_pending++;
+            if (n1_tx_batch_pending >= N1_TX_BATCH_MAX)
+            {
+                n1_macb_tx_batch_flush();
+            }
+        }
+        else
+#endif
+        {
+            macb_gem_kick_tx(eth);
+            macb_gem_tx_restart(eth);
+        }
 #if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
         n1_tx_kick_cycles += (rt_uint32_t)(n1_pmu_cycle() - t0);
         t0 = n1_pmu_cycle();
@@ -1007,6 +1080,13 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
          * With irq_installed: poll completions only. service_traffic()
          * clears ISR and can drop level-triggered MSI/MSIX lines.
          */
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+        if (n1_tx_batch_depth != 0)
+        {
+            /* Completion polling is performed once when the batch flushes. */
+        }
+        else
+#endif
         if (eth->irq_installed)
         {
             macb_poll_completions(eth);

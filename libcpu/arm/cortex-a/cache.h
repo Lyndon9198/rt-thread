@@ -12,6 +12,7 @@
 #define __CACHE_H__
 
 void rt_hw_cpu_icache_invalidate(void *addr, int size);
+void rt_hw_cpu_dcache_clean(void *addr, int size);
 void rt_hw_cpu_dcache_clean_and_invalidate(void *addr, int size);
 
 static inline void rt_hw_icache_invalidate_all(void)

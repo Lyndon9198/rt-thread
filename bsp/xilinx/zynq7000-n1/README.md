@@ -544,6 +544,23 @@ The retained image then completed a 60-second board-to-host run with
 3,711,457,264 bytes in 61.378 seconds (483.7 Mbit/s). A post-test check
 received 20/20 ICMP replies with 0% loss and 0.804 ms average latency.
 
+The next pass batches up to 32 already-contiguous GEM TX descriptors per
+kick/completion poll while retaining a single descriptor per Ethernet frame.
+It also uses Cortex-A9 D-cache clean-only for TX buffers; invalidating a buffer
+that is only read by DMA was unnecessary and doubled the per-line maintenance
+operations. The combined image completed 3,990,854,544 bytes in 61.369 seconds
+(520.2 Mbit/s), followed by 20/20 ICMP replies with 0% loss and 0.804 ms average
+latency. PMU driver cache maintenance fell from about 1284 to 864 cycles per
+segment. Using newlib `memcpy` caused a sustained-test network failure and an
+integer ARM `LDM/STM` copy measured no lower `tcp_write` cost; both copy
+experiments were rejected.
+
+An 8-entry immutable-payload checksum cache reached 540.7 Mbit/s for 15
+seconds and reduced `tcp_write` from about 6355 to 4981 cycles per segment,
+but its 60-second run stopped after 2,040,182,124 bytes and left networking
+unresponsive. It was rejected and the retained image remains the 520.2
+Mbit/s ring-batching plus cache-clean-only version.
+
 The next TX direction is single-descriptor ring batching: prepare several
 complete contiguous frames, publish their descriptors together, and perform
 one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again

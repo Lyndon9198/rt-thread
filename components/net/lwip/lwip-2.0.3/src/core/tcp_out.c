@@ -1125,6 +1125,12 @@ tcp_output(struct tcp_pcb *pcb)
     }
     goto output_done;
   }
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  {
+    extern void n1_macb_tx_batch_begin(void);
+    n1_macb_tx_batch_begin();
+  }
+#endif
   /* data available and window allows it to be sent? */
   while (seg != NULL &&
          lwip_ntohl(seg->tcphdr->seqno) - pcb->lastack + seg->len <= wnd) {
@@ -1161,6 +1167,12 @@ tcp_output(struct tcp_pcb *pcb)
     if (err != ERR_OK) {
       /* segment could not be sent, for whatever reason */
       pcb->flags |= TF_NAGLEMEMERR;
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+      {
+        extern void n1_macb_tx_batch_end(void);
+        n1_macb_tx_batch_end();
+      }
+#endif
       return err;
     }
     pcb->unsent = seg->next;
@@ -1204,6 +1216,12 @@ tcp_output(struct tcp_pcb *pcb)
     }
     seg = pcb->unsent;
   }
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  {
+    extern void n1_macb_tx_batch_end(void);
+    n1_macb_tx_batch_end();
+  }
+#endif
 output_done:
 #if TCP_OVERSIZE
   if (pcb->unsent == NULL) {
