@@ -20,6 +20,7 @@
 
 #define TEST_CTRL_PORT          5002
 #define TEST_STATS_PORT         5003
+#define TEST_STATS_COUNT        36
 #define ZYNQ_SLCR_UNLOCK        0xF8000008U
 #define ZYNQ_SLCR_PSS_RST_CTRL  0xF8000200U
 
@@ -52,6 +53,14 @@ extern rt_uint64_t n1_tx_diag_len;
 extern rt_uint64_t n1_tx_diag_next;
 extern rt_uint64_t n1_tx_diag_type;
 extern rt_uint64_t n1_tx_diag_flags;
+extern rt_uint64_t n1_lwiperf_send_calls;
+extern rt_uint64_t n1_lwiperf_send_segments;
+extern rt_uint64_t n1_lwiperf_send_max_batch;
+extern rt_uint64_t n1_lwiperf_send_errmem;
+extern rt_uint64_t n1_lwiperf_ack_calls;
+extern rt_uint64_t n1_lwiperf_ack_bytes;
+extern rt_uint64_t n1_lwiperf_sndbuf_enter;
+extern rt_uint64_t n1_lwiperf_sndbuf_exit;
 #endif
 
 static void n1_system_reset(void)
@@ -154,8 +163,8 @@ static void test_stats_entry(void *parameter)
         /* binary report: u32 magic + frames + drv + input + stack + app
          * + proc + ackout + tx_drv + ack_build + ack_send + stack_frames
          * (all u64 LE) */
-        rt_uint8_t buf[4 + 8 * 28];
-        rt_uint64_t vals[28];
+        rt_uint8_t buf[4 + 8 * TEST_STATS_COUNT];
+        rt_uint64_t vals[TEST_STATS_COUNT];
         int i;
 
         if (netconn_accept(conn, &newconn) != ERR_OK)
@@ -198,7 +207,15 @@ static void test_stats_entry(void *parameter)
         vals[25] = n1_tx_diag_next;
         vals[26] = n1_tx_diag_type;
         vals[27] = n1_tx_diag_flags;
-        for (i = 0; i < 28; i++)
+        vals[28] = n1_lwiperf_send_calls;
+        vals[29] = n1_lwiperf_send_segments;
+        vals[30] = n1_lwiperf_send_max_batch;
+        vals[31] = n1_lwiperf_send_errmem;
+        vals[32] = n1_lwiperf_ack_calls;
+        vals[33] = n1_lwiperf_ack_bytes;
+        vals[34] = n1_lwiperf_sndbuf_enter;
+        vals[35] = n1_lwiperf_sndbuf_exit;
+        for (i = 0; i < TEST_STATS_COUNT; i++)
         {
             rt_uint64_t v = vals[i];
             rt_uint8_t *p = &buf[4 + i * 8];

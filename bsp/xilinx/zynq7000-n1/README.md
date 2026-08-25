@@ -524,6 +524,33 @@ with the board's per-ACK processing; raising `net.ipv4.tcp_rmem` is expected
 to be neutral for the same reason. Final board-to-host result: 337 Mbit/s
 stable for 60 s with the host QUICKACK disabled.
 
+Follow-up TX work on 2026-08-25 instrumented the lwiperf refill path through
+TCP 5003. The 328.5 Mbit/s baseline made 215,379 sent callbacks in 15 seconds,
+acknowledged 2924 bytes per callback, and queued only 2.003 segments per
+`tcp_output`. Deferring queue refill until 16, 32, and 64 MSS had been ACKed
+measured 375.6, 378.8, and 384.8 Mbit/s respectively. The retained 64-MSS
+setting reduces about 215k refill/output calls to about 8k per 15-second run.
+
+The default checksum-on-copy implementation copied into the new pbuf and then
+checksummed that destination. On N1, checksumming the identical cache-hot
+immutable source after the copy raised the 64-MSS result to 477.5 Mbit/s. A
+second experiment cached the source checksum and measured 472.6 Mbit/s, so it
+was rejected. GEM scatter-gather using separate header and payload descriptors
+was also rejected: the transfer repeatedly stopped at 94,924 bytes and the TX
+ring ceased returning descriptors. The driver and `LWIP_NETIF_TX_SINGLE_PBUF`
+configuration were restored after that test.
+
+The retained image then completed a 60-second board-to-host run with
+3,711,457,264 bytes in 61.378 seconds (483.7 Mbit/s). A post-test check
+received 20/20 ICMP replies with 0% loss and 0.804 ms average latency.
+
+The next TX direction is single-descriptor ring batching: prepare several
+complete contiguous frames, publish their descriptors together, and perform
+one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again
+cannot remove the remaining per-segment pbuf allocation/copy or per-descriptor
+driver cost. For standard-MTU TCP over gigabit Ethernet, the practical payload
+target is approximately 940--950 Mbit/s rather than a literal 1000 Mbit/s.
+
 Reaching 949 Mbit/s board-to-host still requires a materially different TX
 path. Within the currently tested RT-Thread macb plus lwIP API design, the
 remaining candidate is a purpose-built batched raw TCP sender; the tested

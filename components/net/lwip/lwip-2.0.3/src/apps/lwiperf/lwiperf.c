@@ -58,12 +58,29 @@
 
 #include <string.h>
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+rt_uint64_t n1_lwiperf_send_calls;
+rt_uint64_t n1_lwiperf_send_segments;
+rt_uint64_t n1_lwiperf_send_max_batch;
+rt_uint64_t n1_lwiperf_send_errmem;
+rt_uint64_t n1_lwiperf_ack_calls;
+rt_uint64_t n1_lwiperf_ack_bytes;
+rt_uint64_t n1_lwiperf_sndbuf_enter;
+rt_uint64_t n1_lwiperf_sndbuf_exit;
+#endif
+
 /* Currently, only TCP-over-IPv4 is implemented (does iperf support IPv6 anyway?) */
 #if LWIP_IPV4 && LWIP_TCP && LWIP_CALLBACK_API
 
 /** Specify the idle timeout (in seconds) after that the test fails */
 #ifndef LWIPERF_TCP_MAX_IDLE_SEC
 #define LWIPERF_TCP_MAX_IDLE_SEC    10U
+#endif
+
+/* Refill the raw TCP send queue in batches instead of rebuilding and kicking
+ * the TX path for every delayed ACK (normally two MSS on the N1 test host). */
+#ifndef LWIPERF_TCP_REFILL_MSS
+#define LWIPERF_TCP_REFILL_MSS      64U
 #endif
 #if LWIPERF_TCP_MAX_IDLE_SEC > 255
 #error LWIPERF_TCP_MAX_IDLE_SEC must fit into an u8_t
@@ -118,6 +135,7 @@ typedef struct _lwiperf_state_tcp {
   u32_t bytes_transferred;
   lwiperf_settings_t settings;
   u8_t have_settings_buf;
+  u32_t acked_pending;
 } lwiperf_state_tcp_t;
 
 /** List of active iperf sessions */
@@ -259,6 +277,12 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
   u16_t txlen_max;
   void* txptr;
   u8_t apiflags;
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  u32_t batch = 0;
+
+  n1_lwiperf_send_calls++;
+  n1_lwiperf_sndbuf_enter += tcp_sndbuf(conn->conn_pcb);
+#endif
 
   LWIP_ASSERT("conn invalid", (conn != NULL) && conn->base.tcp && (conn->base.server == 0));
 
@@ -321,13 +345,28 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
 
     if (err == ERR_OK) {
       conn->bytes_transferred += txlen;
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+      batch++;
+      n1_lwiperf_send_segments++;
+#endif
       if ((conn->bytes_transferred % (5000 * TCP_MSS)) < (u32_t)txlen) {
       }
     } else {
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+      if (err == ERR_MEM) {
+        n1_lwiperf_send_errmem++;
+      }
+#endif
       send_more = 0;
     }
   } while(send_more);
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  if (batch > n1_lwiperf_send_max_batch) {
+    n1_lwiperf_send_max_batch = batch;
+  }
+  n1_lwiperf_sndbuf_exit += tcp_sndbuf(conn->conn_pcb);
+#endif
   tcp_output(conn->conn_pcb);
   return ERR_OK;
 }
@@ -343,6 +382,17 @@ lwiperf_tcp_client_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
   LWIP_UNUSED_ARG(len);
 
   conn->poll_count = 0;
+
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+  n1_lwiperf_ack_calls++;
+  n1_lwiperf_ack_bytes += len;
+#endif
+
+  conn->acked_pending += len;
+  if (conn->acked_pending < (LWIPERF_TCP_REFILL_MSS * TCP_MSS)) {
+    return ERR_OK;
+  }
+  conn->acked_pending = 0;
 
   return lwiperf_tcp_client_send_more(conn);
 }

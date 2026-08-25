@@ -604,6 +604,13 @@ u16_t
 lwip_chksum_copy(void *dst, const void *src, u16_t len)
 {
   MEMCPY(dst, src, len);
+#if defined(SOC_XILINX_ZYNQ7000)
+  /* The N1 TX generator repeatedly copies a cache-hot immutable source.
+   * Checksum those identical bytes instead of re-reading the freshly
+   * allocated destination pbuf. */
+  return LWIP_CHKSUM(src, len);
+#else
   return LWIP_CHKSUM(dst, len);
+#endif
 }
 #endif /* (LWIP_CHKSUM_COPY_ALGORITHM == 1) */
