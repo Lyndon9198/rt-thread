@@ -599,6 +599,15 @@ answering ICMP. It was rejected and the reference count remains protected by
 the original lwIP mechanism. The retained deployed baseline is still the
 650.4 Mbit/s dedicated memp-lock image.
 
+Two driver-only micro-optimizations were also rejected. Suppressing the
+per-frame `eth_device_ready()` call inside a TX batch reduced two 5-second
+runs to 607.7 and 587.7 Mbit/s; the notification helps the RX thread process
+incoming ACKs promptly even though batch flush also polls RX. Replacing the
+GEM TX kick's live NCR reads with the software `ncr_shadow` stopped after
+250,855,764 bytes in its first short run and left the board unresponsive.
+The NCR readback/barrier sequence is therefore required on this hardware.
+Both changes were reverted before restoring the retained image.
+
 The next TX direction is single-descriptor ring batching: prepare several
 complete contiguous frames, publish their descriptors together, and perform
 one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again
