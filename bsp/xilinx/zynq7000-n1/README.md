@@ -592,6 +592,13 @@ received 20/20 ICMP replies with 0% loss. This replaces the 520.2 Mbit/s image
 as the retained TX baseline without changing TCP behavior or global lwIP lock
 semantics.
 
+A narrower follow-up replaced only the 16-bit pbuf reference increment and
+decrement with ARM atomic operations. It reached 699.8 Mbit/s for 5 seconds,
+but the 15-second run stopped after 798,725,144 bytes and the board stopped
+answering ICMP. It was rejected and the reference count remains protected by
+the original lwIP mechanism. The retained deployed baseline is still the
+650.4 Mbit/s dedicated memp-lock image.
+
 The next TX direction is single-descriptor ring batching: prepare several
 complete contiguous frames, publish their descriptors together, and perform
 one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again
