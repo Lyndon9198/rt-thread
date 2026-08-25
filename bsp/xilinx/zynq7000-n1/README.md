@@ -580,6 +580,18 @@ only after 5-, 15-, and 60-second reverse runs plus post-test ping. A second
 candidate is driver-local preallocation/recycling of contiguous TX staging
 buffers; it avoids changing lwIP locking and does not require a new TCP path.
 
+The retained follow-up keeps the recursive mutex for every general
+`SYS_ARCH_PROTECT` user and gives only the fixed-pool freelist in `memp.c` a
+dedicated IRQ-save spinlock on Zynq7000 SMP. Its critical section contains no
+blocking call, callback, network output, or driver operation. It only checks
+one pool element's overflow guards, removes/adds the freelist head, and updates
+pool statistics. The staged reverse results were 618.8 Mbit/s for 5 seconds,
+633.8 Mbit/s for 15 seconds, and 4,989,379,204 bytes in 61.368 seconds
+(650.4 Mbit/s) for the 60-second acceptance run. The final health check
+received 20/20 ICMP replies with 0% loss. This replaces the 520.2 Mbit/s image
+as the retained TX baseline without changing TCP behavior or global lwIP lock
+semantics.
+
 The next TX direction is single-descriptor ring batching: prepare several
 complete contiguous frames, publish their descriptors together, and perform
 one GEM kick/completion poll per batch. Raising the lwiperf ACK threshold again

@@ -51,6 +51,18 @@
 
 #include <string.h>
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+#include <rtthread.h>
+static RT_DEFINE_SPINLOCK(memp_lock);
+#define MEMP_ARCH_DECL_PROTECT(level) rt_base_t level
+#define MEMP_ARCH_PROTECT(level)      ((level) = rt_spin_lock_irqsave(&memp_lock))
+#define MEMP_ARCH_UNPROTECT(level)    rt_spin_unlock_irqrestore(&memp_lock, (level))
+#else
+#define MEMP_ARCH_DECL_PROTECT(level) SYS_ARCH_DECL_PROTECT(level)
+#define MEMP_ARCH_PROTECT(level)      SYS_ARCH_PROTECT(level)
+#define MEMP_ARCH_UNPROTECT(level)    SYS_ARCH_UNPROTECT(level)
+#endif
+
 /* Make sure we include everything we need for size calculation required by memp_std.h */
 #include "lwip/pbuf.h"
 #include "lwip/raw.h"
@@ -295,13 +307,13 @@ do_memp_malloc_pool_fn(const struct memp_desc *desc, const char* file, const int
 #endif
 {
   struct memp *memp;
-  SYS_ARCH_DECL_PROTECT(old_level);
+  MEMP_ARCH_DECL_PROTECT(old_level);
 
 #if MEMP_MEM_MALLOC
   memp = (struct memp *)mem_malloc(MEMP_SIZE + MEMP_ALIGN_SIZE(desc->size));
-  SYS_ARCH_PROTECT(old_level);
+  MEMP_ARCH_PROTECT(old_level);
 #else /* MEMP_MEM_MALLOC */
-  SYS_ARCH_PROTECT(old_level);
+  MEMP_ARCH_PROTECT(old_level);
 
   memp = *desc->tab;
 #endif /* MEMP_MEM_MALLOC */
@@ -333,7 +345,7 @@ do_memp_malloc_pool_fn(const struct memp_desc *desc, const char* file, const int
       desc->stats->max = desc->stats->used;
     }
 #endif
-    SYS_ARCH_UNPROTECT(old_level);
+    MEMP_ARCH_UNPROTECT(old_level);
     /* cast through u8_t* to get rid of alignment warnings */
     return ((u8_t*)memp + MEMP_SIZE);
   } else {
@@ -343,7 +355,7 @@ do_memp_malloc_pool_fn(const struct memp_desc *desc, const char* file, const int
 #endif
   }
 
-  SYS_ARCH_UNPROTECT(old_level);
+  MEMP_ARCH_UNPROTECT(old_level);
   return NULL;
 }
 
@@ -407,7 +419,7 @@ static void
 do_memp_free_pool(const struct memp_desc* desc, void *mem)
 {
   struct memp *memp;
-  SYS_ARCH_DECL_PROTECT(old_level);
+  MEMP_ARCH_DECL_PROTECT(old_level);
 
   LWIP_ASSERT("memp_free: mem properly aligned",
                 ((mem_ptr_t)mem % MEM_ALIGNMENT) == 0);
@@ -415,7 +427,7 @@ do_memp_free_pool(const struct memp_desc* desc, void *mem)
   /* cast through void* to get rid of alignment warnings */
   memp = (struct memp *)(void *)((u8_t*)mem - MEMP_SIZE);
 
-  SYS_ARCH_PROTECT(old_level);
+  MEMP_ARCH_PROTECT(old_level);
 
 #if MEMP_OVERFLOW_CHECK == 1
   memp_overflow_check_element_overflow(memp, desc);
@@ -428,7 +440,7 @@ do_memp_free_pool(const struct memp_desc* desc, void *mem)
 
 #if MEMP_MEM_MALLOC
   LWIP_UNUSED_ARG(desc);
-  SYS_ARCH_UNPROTECT(old_level);
+  MEMP_ARCH_UNPROTECT(old_level);
   mem_free(memp);
 #else /* MEMP_MEM_MALLOC */
   memp->next = *desc->tab;
@@ -438,7 +450,7 @@ do_memp_free_pool(const struct memp_desc* desc, void *mem)
   LWIP_ASSERT("memp sanity", memp_sanity(desc));
 #endif /* MEMP_SANITY_CHECK */
 
-  SYS_ARCH_UNPROTECT(old_level);
+  MEMP_ARCH_UNPROTECT(old_level);
 #endif /* !MEMP_MEM_MALLOC */
 }
 
