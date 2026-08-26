@@ -1,0 +1,11 @@
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c') + Glob('*.S')
+
+if not GetDepend('BSP_USING_UART0'):
+    SrcRemove(src, ['drv_uart.c'])
+
+group = DefineGroup('Drivers', src, depend=[''], CPPPATH=[cwd])
+
+Return('group')
