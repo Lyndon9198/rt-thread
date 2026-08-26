@@ -1,0 +1,25 @@
+mainmenu "RT-Thread Project Configuration"
+
+BSP_DIR := .
+RTT_DIR := ../../..
+PKGS_DIR := packages
+
+source "$(RTT_DIR)/Kconfig"
+osource "$PKGS_DIR/Kconfig"
+
+menu "ALIENTEK Navigator ZYNQ7020 BSP"
+
+config SOC_XILINX_ZYNQ7000
+    bool
+    default y
+    select ARCH_ARM_CORTEX_A9
+    select RT_USING_GIC_V2
+    select RT_USING_COMPONENTS_INIT
+    select RT_USING_USER_MAIN
+
+config BSP_USING_UART0
+    bool "Enable PS UART0"
+    default y
+    select RT_USING_SERIAL
+
+endmenu
