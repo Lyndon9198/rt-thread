@@ -455,6 +455,7 @@
 
 #define SOC_XILINX_ZYNQ7000
 #define BSP_USING_UART0
+#define BSP_USING_GPIO
 /* end of ALIENTEK Navigator ZYNQ7020 BSP */
 
 #endif
