@@ -9,11 +9,15 @@ osource "$PKGS_DIR/Kconfig"
 
 menu "ALIENTEK Navigator ZYNQ7020 BSP"
 
+config RT_USING_FPU
+    bool
+
 config SOC_XILINX_ZYNQ7000
     bool
     default y
     select ARCH_ARM_CORTEX_A9
     select RT_USING_GIC_V2
+    select RT_USING_FPU
     select RT_USING_COMPONENTS_INIT
     select RT_USING_USER_MAIN
 
@@ -26,5 +30,15 @@ config BSP_USING_GPIO
     bool "Enable PS GPIO"
     default y
     select RT_USING_PIN
+
+config BSP_USING_WDT
+    bool "Enable PS watchdog"
+    default y
+    select RT_USING_WDT
+
+config BSP_USING_TTC0_TIMER0
+    bool "Enable TTC0 timer0"
+    default y
+    select RT_USING_CLOCK_TIME
 
 endmenu

@@ -9,6 +9,12 @@ if not GetDepend('BSP_USING_UART0'):
 if not GetDepend('BSP_USING_GPIO'):
     SrcRemove(src, ['drv_gpio.c'])
 
+if not GetDepend('BSP_USING_WDT'):
+    SrcRemove(src, ['drv_wdt.c'])
+
+if not GetDepend('BSP_USING_TTC0_TIMER0'):
+    SrcRemove(src, ['drv_ttc.c'])
+
 group = DefineGroup('Drivers', src, depend=[''], CPPPATH=[cwd])
 
 Return('group')

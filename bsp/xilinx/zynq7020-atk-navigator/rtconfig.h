@@ -166,6 +166,8 @@
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_USING_DMA
 #define RT_SERIAL_RB_BUFSZ 64
+#define RT_USING_CLOCK_TIME
+#define RT_USING_WDT
 #define RT_USING_PIN
 /* end of Device Drivers */
 
@@ -453,9 +455,12 @@
 
 /* ALIENTEK Navigator ZYNQ7020 BSP */
 
+#define RT_USING_FPU
 #define SOC_XILINX_ZYNQ7000
 #define BSP_USING_UART0
 #define BSP_USING_GPIO
+#define BSP_USING_WDT
+#define BSP_USING_TTC0_TIMER0
 /* end of ALIENTEK Navigator ZYNQ7020 BSP */
 
 #endif
