@@ -6,6 +6,9 @@ src = Glob('*.c') + Glob('*.S')
 if not GetDepend('BSP_USING_UART0'):
     SrcRemove(src, ['drv_uart.c'])
 
+if not GetDepend('BSP_USING_GPIO'):
+    SrcRemove(src, ['drv_gpio.c'])
+
 group = DefineGroup('Drivers', src, depend=[''], CPPPATH=[cwd])
 
 Return('group')

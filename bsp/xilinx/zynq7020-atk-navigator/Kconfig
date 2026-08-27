@@ -22,4 +22,9 @@ config BSP_USING_UART0
     default y
     select RT_USING_SERIAL
 
+config BSP_USING_GPIO
+    bool "Enable PS GPIO"
+    default y
+    select RT_USING_PIN
+
 endmenu

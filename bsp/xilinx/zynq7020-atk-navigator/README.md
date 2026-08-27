@@ -14,7 +14,12 @@ The current BSP provides:
 - MMU and cache
 - 1 GiB PS DDR heap
 - PS UART0 console
+- PS GPIO pin device with interrupt support
 - Cortex-A9 private timer system tick
+
+PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
+EMIO0-EMIO63. Pull-up and pull-down settings belong to the Zynq MIO pin-control
+registers and are not changed by the GPIO direction API.
 
 ## Toolchain
 
