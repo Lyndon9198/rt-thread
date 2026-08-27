@@ -15,11 +15,23 @@ The current BSP provides:
 - 1 GiB PS DDR heap
 - PS UART0 console
 - PS GPIO pin device with interrupt support
+- VFP/NEON context management on both Cortex-A9 cores
+- PS watchdog device
+- TTC0 timer0 clock-timer device
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
 EMIO0-EMIO63. Pull-up and pull-down settings belong to the Zynq MIO pin-control
 registers and are not changed by the GPIO direction API.
+
+The watchdog is registered as `wdt`. It supports setting a timeout in whole
+seconds, start, stop, and keepalive through the standard RT-Thread watchdog
+device controls.
+
+TTC0 timer0 is registered as `timer0` through RT-Thread's current
+`rt_clock_timer` interface. Its fixed counter frequency is 976562 Hz (125 MHz
+divided by 128), with a 16-bit interval counter and interrupt-driven one-shot
+or periodic operation.
 
 ## Toolchain
 
