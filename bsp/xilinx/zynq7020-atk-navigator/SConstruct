@@ -10,6 +10,11 @@ else:
 
 sys.path = sys.path + [os.path.join(RTT_ROOT, 'tools')]
 from building import *
+import dtc
+
+dtc.dts_to_dtb(RTT_ROOT, ['zynq7020-atk-navigator.dts'],
+               include_paths=[os.getcwd()],
+               ignore_warning=['unit_address_vs_reg', 'clocks_is_cell'])
 
 TARGET = 'rtthread.' + rtconfig.TARGET_EXT
 

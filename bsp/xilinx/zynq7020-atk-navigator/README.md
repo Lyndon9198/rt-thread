@@ -19,6 +19,7 @@ The current BSP provides:
 - PS watchdog device
 - TTC0 timer0 clock-timer device
 - PS CAN0 device
+- PS GEM0 Ethernet with the external RTL8211E PHY
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
@@ -43,6 +44,19 @@ used by this BSP.
 CAN0 is routed through EMIO: RX is connected to FPGA pin L16 and TX to J14,
 both using 3.3 V I/O. These signals are controller-level CAN RX/TX and require
 an external 3.3 V CAN transceiver before they can be connected to a CAN bus.
+
+GEM0 is registered as `e0`. Its RTL8211E PHY uses MDIO address 7 and RGMII-ID.
+The default configuration uses DHCP and enables a larger TCP window, direct
+TCP/IP-core-locked input, and zero-copy receive buffers. The top 2 MiB of DDR
+is reserved for non-cacheable GEM descriptor and packet storage; it is not
+included in the system heap.
+
+Hardware validation used a direct gigabit link to a Linux host. ICMP passed
+without packet loss, and an iperf2 TCP host-to-board test sustained about
+850 Mbit/s for 15 seconds. The conservative copy-based board-to-host path
+sustained about 250 Mbit/s. Higher transmit rates require asynchronous TX
+descriptor batching or reference-counted zero-copy TX; neither is enabled
+because the buffer lifetime must remain correct under SMP.
 
 ## Toolchain
 

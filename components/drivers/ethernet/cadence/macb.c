@@ -10,12 +10,41 @@
 
 #include "macb.h"
 
+#include <lwip/init.h>
+#include <lwip/pbuf.h>
+
+#if defined(SOC_XILINX_ZYNQ7000)
+#include <cache.h>
+#endif
+
 #define DBG_TAG "eth.macb"
 #define DBG_LVL DBG_WARNING
 #include <rtdbg.h>
 
 #define NEXT_TX(i) (((i) + 1) & (MACB_TX_RING_SIZE - 1))
 #define NEXT_RX(i) (((i) + 1) & (MACB_RX_RING_SIZE - 1))
+
+#if defined(SOC_XILINX_ZYNQ7000)
+struct macb_rx_pbuf
+{
+    struct pbuf_custom custom;
+    struct macb_eth *eth;
+    rt_uint32_t index;
+};
+#endif
+
+rt_weak void *macb_platform_dma_alloc(struct rt_device *dev, rt_size_t size,
+                                      rt_ubase_t *dma_handle, rt_ubase_t flags)
+{
+    return rt_dma_alloc(dev, size, dma_handle, flags);
+}
+
+rt_weak void macb_platform_dma_free(struct rt_device *dev, rt_size_t size,
+                                    void *cpu_addr, rt_ubase_t dma_handle,
+                                    rt_ubase_t flags)
+{
+    rt_dma_free(dev, size, cpu_addr, dma_handle, flags);
+}
 
 #define MACB_PHY_RETRY_INTERVAL_MS      2000
 #define MACB_PHY_RETRY_MAX              15
@@ -236,6 +265,7 @@ static void macb_gem_commit_irq_enable(struct macb_eth *eth);
 static void macb_gem_write_traffic_ier(struct macb_eth *eth);
 static void macb_service_traffic(struct macb_eth *eth);
 static rt_bool_t macb_gem_irq_use_q0_bank(struct macb_eth *eth);
+
 static void macb_clocks_get(struct macb_eth *eth, struct rt_device *dev)
 {
     eth->pclk = rt_clk_get_by_name(dev, "pclk");
@@ -268,18 +298,30 @@ static void macb_clocks_get(struct macb_eth *eth, struct rt_device *dev)
 
 static void macb_dma_flush(struct macb_eth *eth, void *ptr, rt_size_t size)
 {
+#if defined(SOC_XILINX_ZYNQ7000)
+    RT_UNUSED(eth);
+    RT_UNUSED(ptr);
+    RT_UNUSED(size);
+#else
     if (ptr && size)
     {
         rt_dma_sync_out_data(eth->dev, ptr, size, RT_NULL, macb_dma_flags(eth));
     }
+#endif
 }
 
 static void macb_dma_inval(struct macb_eth *eth, void *ptr, rt_size_t size)
 {
+#if defined(SOC_XILINX_ZYNQ7000)
+    RT_UNUSED(eth);
+    RT_UNUSED(ptr);
+    RT_UNUSED(size);
+#else
     if (ptr && size)
     {
         rt_dma_sync_in_data(eth->dev, ptr, size, 0, macb_dma_flags(eth));
     }
+#endif
 }
 
 static rt_size_t macb_desc_stride(struct macb_eth *eth)
@@ -314,7 +356,7 @@ static void macb_set_desc_addr(struct macb_eth *eth, struct macb_dma_desc *desc,
                 ((rt_uint8_t *)desc + sizeof(*desc));
 
         desc64->addrh = (rt_uint32_t)(addr >> 32);
-        rt_hw_wmb();
+        rt_hw_dmb();
     }
 
     desc->addr = (rt_uint32_t)addr;
@@ -441,8 +483,8 @@ static void macb_init_ring_bases(struct macb_eth *eth)
 {
     if (eth->dma_64bit)
     {
-        macb_writel(eth, GEM_RBQPH, (rt_uint32_t)(eth->rx_ring_dma >> 32));
-        macb_writel(eth, GEM_TBQPH, (rt_uint32_t)(eth->tx_ring_dma >> 32));
+        macb_writel(eth, GEM_RBQPH, (rt_uint32_t)((rt_uint64_t)eth->rx_ring_dma >> 32));
+        macb_writel(eth, GEM_TBQPH, (rt_uint32_t)((rt_uint64_t)eth->tx_ring_dma >> 32));
         macb_writel(eth, GEM_RBQP, (rt_uint32_t)eth->rx_ring_dma);
         macb_writel(eth, GEM_TBQP, (rt_uint32_t)eth->tx_ring_dma);
     }
@@ -689,7 +731,13 @@ static void macb_gem_init_usrio(struct macb_eth *eth)
 
 static void macb_gem_init_intmod(struct macb_eth *eth)
 {
-    rt_uint32_t throttle = (1000 * 50) / 800;
+    /*
+     * RX moderation in 800 ns units. The erx thread masks RX while draining
+     * the ring, so the moderation period only adds idle time between bursts.
+     * With moderation disabled the pending RCOMP fires immediately after the
+     * IRQ is re-armed and the drain backlog keeps the thread busy.
+     */
+    rt_uint32_t throttle = 0;
     rt_uint32_t intmod = 0;
 
     intmod |= (throttle & 0xffu) << GEM_INTMOD_TX_MOD_SHIFT;
@@ -755,6 +803,16 @@ static void macb_rx_refill(struct macb_eth *eth, rt_uint32_t idx)
 
     macb_dma_flush(eth, d, dsz);
 }
+
+#if defined(SOC_XILINX_ZYNQ7000)
+static void macb_rx_pbuf_free(struct pbuf *p)
+{
+    struct macb_rx_pbuf *rxp =
+        rt_container_of(p, struct macb_rx_pbuf, custom.pbuf);
+
+    macb_rx_refill(rxp->eth, rxp->index);
+}
+#endif
 
 static void macb_tx_cleanup(struct macb_eth *eth)
 {
@@ -858,9 +916,9 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         }
 
         macb_set_desc_addr(eth, d, buf_dma);
-        rt_hw_wmb();
+        rt_hw_dmb();
         d->ctrl = ctrl;
-        rt_hw_wmb();
+        rt_hw_dmb();
         macb_desc_ring_sync(eth, RT_FALSE, RT_TRUE);
 
         eth->tx_head = NEXT_TX(eth->tx_head);
@@ -894,15 +952,148 @@ static struct pbuf *macb_eth_rx(rt_device_t dev)
     rt_uint16_t len;
     struct pbuf *p = RT_NULL;
 
-    if (eth->irq_installed)
-    {
-        macb_poll_completions(eth);
-    }
-    else
+    if (!eth->irq_installed)
     {
         macb_service_traffic(eth);
     }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(MACB_USING_JUMBO_RX)
+    {
+        rt_uint32_t first = eth->rx_tail;
+        rt_uint32_t count = 0;
+        rt_uint32_t total_len = 0;
+        rt_uint32_t index = first;
+        struct pbuf *head = RT_NULL;
+
+        while (count < MACB_RX_RING_SIZE)
+        {
+            d = macb_rx_desc_at(eth, index);
+            macb_dma_inval(eth, d, macb_desc_sync_size(eth));
+            rt_hw_dmb();
+
+            if (!(d->addr & GEM_RX_USED))
+            {
+                macb_gem_write_traffic_ier(eth);
+                return RT_NULL;
+            }
+
+            ctrl = d->ctrl;
+            if (count == 0 && !(ctrl & GEM_RX_SOF))
+            {
+                macb_rx_refill(eth, index);
+                eth->rx_tail = NEXT_RX(index);
+                macb_gem_write_traffic_ier(eth);
+                return RT_NULL;
+            }
+
+            ++count;
+            if (ctrl & GEM_RX_EOF)
+            {
+                total_len = ctrl & GEM_RX_LEN_MASK;
+                break;
+            }
+            index = NEXT_RX(index);
+        }
+
+        if (!total_len || total_len > count * MACB_RX_BUFFER_SIZE ||
+            (count > 1 && total_len <= (count - 1) * MACB_RX_BUFFER_SIZE))
+        {
+            for (rt_uint32_t i = 0, slot = first; i < count; ++i, slot = NEXT_RX(slot))
+            {
+                macb_rx_refill(eth, slot);
+            }
+            eth->rx_tail = (first + count) & (MACB_RX_RING_SIZE - 1);
+            macb_gem_write_traffic_ier(eth);
+            return RT_NULL;
+        }
+
+        if (count > 1)
+        {
+            rt_uint32_t remaining = total_len;
+            rt_uint16_t offset = 0;
+
+            head = pbuf_alloc(PBUF_RAW, (rt_uint16_t)total_len, PBUF_RAM);
+            if (head)
+            {
+                for (rt_uint32_t i = 0, slot = first; i < count;
+                     ++i, slot = NEXT_RX(slot))
+                {
+                    rt_uint16_t segment_len = remaining > MACB_RX_BUFFER_SIZE ?
+                                              MACB_RX_BUFFER_SIZE : (rt_uint16_t)remaining;
+                    rt_uint8_t *buf = eth->rx_buffer + slot * MACB_RX_BUFFER_SIZE;
+
+                    macb_dma_inval(eth, buf, segment_len);
+                    rt_hw_dmb();
+                    if (pbuf_take_at(head, buf, segment_len, offset) != ERR_OK)
+                    {
+                        pbuf_free(head);
+                        head = RT_NULL;
+                        break;
+                    }
+                    remaining -= segment_len;
+                    offset += segment_len;
+                }
+            }
+
+            for (rt_uint32_t i = 0, slot = first; i < count;
+                 ++i, slot = NEXT_RX(slot))
+            {
+                macb_rx_refill(eth, slot);
+            }
+            eth->rx_tail = (first + count) & (MACB_RX_RING_SIZE - 1);
+            if (!head)
+            {
+                macb_gem_write_traffic_ier(eth);
+            }
+            return head;
+        }
+
+        for (rt_uint32_t i = 0, slot = first, remaining = total_len;
+             i < count; ++i, slot = NEXT_RX(slot))
+        {
+            rt_uint16_t segment_len = remaining > MACB_RX_BUFFER_SIZE ?
+                                      MACB_RX_BUFFER_SIZE : (rt_uint16_t)remaining;
+            rt_uint8_t *buf = eth->rx_buffer + slot * MACB_RX_BUFFER_SIZE;
+            struct macb_rx_pbuf *rxp =
+                &((struct macb_rx_pbuf *)eth->rx_pbufs)[slot];
+            struct pbuf *segment;
+
+            macb_dma_inval(eth, buf, segment_len);
+            rt_hw_dmb();
+            rxp->custom.custom_free_function = macb_rx_pbuf_free;
+            segment = pbuf_alloced_custom(PBUF_RAW, segment_len, PBUF_REF,
+                                          &rxp->custom, buf,
+                                          MACB_RX_BUFFER_SIZE);
+            if (!segment)
+            {
+                if (head)
+                {
+                    pbuf_free(head);
+                }
+                for (; i < count; ++i, slot = NEXT_RX(slot))
+                {
+                    macb_rx_refill(eth, slot);
+                }
+                eth->rx_tail = (first + count) & (MACB_RX_RING_SIZE - 1);
+                macb_gem_write_traffic_ier(eth);
+                return RT_NULL;
+            }
+
+            if (!head)
+            {
+                head = segment;
+            }
+            else
+            {
+                pbuf_cat(head, segment);
+            }
+            remaining -= segment_len;
+        }
+
+        eth->rx_tail = (first + count) & (MACB_RX_RING_SIZE - 1);
+        return head;
+    }
+#else
     d = macb_rx_desc_at(eth, eth->rx_tail);
     macb_dma_inval(eth, d, macb_desc_sync_size(eth));
     rt_hw_dmb();
@@ -911,6 +1102,7 @@ static struct pbuf *macb_eth_rx(rt_device_t dev)
     /* Ownership: HW sets RX_USED in addr when a frame is in the buffer */
     if (!(addr & GEM_RX_USED))
     {
+        macb_gem_write_traffic_ier(eth);
         return RT_NULL;
     }
 
@@ -920,6 +1112,7 @@ static struct pbuf *macb_eth_rx(rt_device_t dev)
     {
         macb_rx_refill(eth, eth->rx_tail);
         eth->rx_tail = NEXT_RX(eth->rx_tail);
+        macb_gem_write_traffic_ier(eth);
         return RT_NULL;
     }
 
@@ -928,6 +1121,7 @@ static struct pbuf *macb_eth_rx(rt_device_t dev)
     {
         macb_rx_refill(eth, eth->rx_tail);
         eth->rx_tail = NEXT_RX(eth->rx_tail);
+        macb_gem_write_traffic_ier(eth);
         return RT_NULL;
     }
 
@@ -935,19 +1129,47 @@ static struct pbuf *macb_eth_rx(rt_device_t dev)
         rt_uint8_t *buf = eth->rx_buffer + eth->rx_tail * MACB_RX_BUFFER_SIZE;
 
         macb_dma_inval(eth, buf, len);
-        rt_hw_dmb();
 
+#if defined(SOC_XILINX_ZYNQ7000)
+        {
+            struct macb_rx_pbuf *rxp =
+                &((struct macb_rx_pbuf *)eth->rx_pbufs)[eth->rx_tail];
+
+            rxp->custom.custom_free_function = macb_rx_pbuf_free;
+            rxp->custom.pbuf.next = RT_NULL;
+            rxp->custom.pbuf.payload = buf;
+            rxp->custom.pbuf.tot_len = len;
+            rxp->custom.pbuf.len = len;
+#if LWIP_VERSION_MAJOR >= 2 && LWIP_VERSION_MINOR >= 1
+            rxp->custom.pbuf.type_internal = PBUF_REF;
+#else
+            rxp->custom.pbuf.type = PBUF_REF;
+#endif
+            rxp->custom.pbuf.flags = PBUF_FLAG_IS_CUSTOM;
+            rxp->custom.pbuf.ref = 1;
+            p = &rxp->custom.pbuf;
+        }
+#else
         p = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
         if (p)
         {
             rt_memcpy(p->payload, buf, len);
         }
+#endif
     }
 
+#if !defined(SOC_XILINX_ZYNQ7000)
     macb_rx_refill(eth, eth->rx_tail);
+#endif
     eth->rx_tail = NEXT_RX(eth->rx_tail);
 
+    if (!p)
+    {
+        macb_gem_write_traffic_ier(eth);
+    }
+
     return p;
+#endif
 }
 
 static rt_err_t macb_eth_control(rt_device_t dev, int cmd, void *args)
@@ -1010,7 +1232,17 @@ static void macb_clear_gem_irq(struct macb_eth *eth, rt_uint32_t status)
 
 static void macb_gem_commit_irq_enable(struct macb_eth *eth)
 {
+#if defined(SOC_XILINX_ZYNQ7000)
+    /*
+     * Polled TX: the TX path (macb_eth_tx -> macb_poll_completions) owns
+     * the TX ring and cleans completions inline, so the TCOMP interrupt is
+     * left disabled. Enabling it would fire on every ACK (the ring drains
+     * between ACKs) and race the erx thread's TX cleanup across CPUs.
+     */
+    rt_uint32_t mask = GEM_INT_RX_BITS | GEM_INT_HRESP;
+#else
     rt_uint32_t mask = GEM_INT_RX_BITS | GEM_INT_TX_BITS | GEM_INT_HRESP;
+#endif
     rt_uint32_t imr, pending;
     rt_bool_t use_q0 = macb_gem_irq_use_q0_bank(eth);
 
@@ -1080,7 +1312,11 @@ static void macb_gem_commit_irq_enable(struct macb_eth *eth)
 
 static void macb_gem_write_traffic_ier(struct macb_eth *eth)
 {
+#if defined(SOC_XILINX_ZYNQ7000)
+    rt_uint32_t mask = GEM_INT_RX_BITS | GEM_INT_HRESP; /* polled TX */
+#else
     rt_uint32_t mask = GEM_INT_RX_BITS | GEM_INT_TX_BITS | GEM_INT_HRESP;
+#endif
 
     macb_writel(eth, GEM_IER, mask);
     if (macb_gem_irq_use_q0_bank(eth))
@@ -1154,7 +1390,26 @@ static void macb_eth_isr(int irq, void *param)
 
     RT_UNUSED(irq);
 
+#if defined(ARCH_ARM_CORTEX_A9)
+    {
+        rt_uint32_t status = macb_gem_isr(eth);
+
+        if (status & GEM_INT_RX_BITS)
+        {
+            macb_writel(eth, GEM_IDR, GEM_INT_RX_BITS);
+            macb_writel(eth, GEM_RSR, macb_readl(eth, GEM_RSR));
+            eth_device_ready(&eth->parent);
+        }
+        if (status & GEM_INT_TX_BITS)
+        {
+            macb_writel(eth, GEM_TSR, macb_readl(eth, GEM_TSR));
+            macb_tx_cleanup(eth);
+        }
+        macb_clear_gem_irq(eth, status);
+    }
+#else
     macb_service_traffic(eth);
+#endif
 }
 
 #include "macb_phy.c"
@@ -1524,6 +1779,9 @@ rt_err_t macb_eth_hw_init(struct macb_eth *eth)
 
     ncfgr = gem_ncfgr_mdc_div(pclk_hz);
     ncfgr |= GEM_NCFGR_BIG | GEM_NCFGR_DRFCS;
+#if defined(SOC_XILINX_ZYNQ7000)
+    ncfgr |= GEM_NCFGR_RXCOEN;
+#endif
     ncfgr |= macb_gem_dbw(eth);
     eth->ncfgr_shadow = ncfgr;
     macb_writel(eth, GEM_NCFGR, ncfgr);
@@ -1541,7 +1799,7 @@ rt_err_t macb_eth_hw_init(struct macb_eth *eth)
     {
         rt_ubase_t dma_flags = macb_dma_flags(eth);
 
-        blob = rt_dma_alloc(eth->dev, blob_sz, &dma_handle, dma_flags);
+        blob = macb_platform_dma_alloc(eth->dev, blob_sz, &dma_handle, dma_flags);
     }
 
     if (!blob)
@@ -1561,6 +1819,22 @@ rt_err_t macb_eth_hw_init(struct macb_eth *eth)
     eth->tx_ring_dma = dma_handle + rx_ring_bytes;
     eth->rx_buffer_dma = dma_handle + rx_ring_bytes + tx_ring_bytes;
     eth->tx_buffer_dma = eth->rx_buffer_dma + MACB_RX_RING_SIZE * MACB_RX_BUFFER_SIZE;
+
+#if defined(SOC_XILINX_ZYNQ7000)
+    eth->rx_pbufs = rt_calloc(MACB_RX_RING_SIZE, sizeof(struct macb_rx_pbuf));
+    if (!eth->rx_pbufs)
+    {
+        err = -RT_ENOMEM;
+        goto _fail_blob;
+    }
+    for (int i = 0; i < MACB_RX_RING_SIZE; ++i)
+    {
+        struct macb_rx_pbuf *rxp = &((struct macb_rx_pbuf *)eth->rx_pbufs)[i];
+
+        rxp->eth = eth;
+        rxp->index = i;
+    }
+#endif
 
     if (eth->rx_ring_dma > 0xffffffffULL)
     {
@@ -1712,6 +1986,11 @@ _fail_mii:
     macb_mii_unregister(eth);
 
 _fail_blob:
+    if (eth->rx_pbufs)
+    {
+        rt_free(eth->rx_pbufs);
+        eth->rx_pbufs = RT_NULL;
+    }
     if (eth->dummy_desc)
     {
         rt_dma_free(eth->dev, eth->dummy_desc_size, eth->dummy_desc,
@@ -1721,8 +2000,8 @@ _fail_blob:
     }
     if (eth->rx_ring)
     {
-        rt_dma_free(eth->dev, eth->dma_blob_size, eth->rx_ring, eth->dma_blob_handle,
-                RT_DMA_F_LINEAR);
+        macb_platform_dma_free(eth->dev, eth->dma_blob_size, eth->rx_ring,
+                eth->dma_blob_handle, RT_DMA_F_LINEAR);
         eth->rx_ring = RT_NULL;
         eth->dma_blob_size = 0;
     }
@@ -1827,7 +2106,9 @@ rt_err_t macb_eth_common_remove(struct macb_eth *eth)
     if (eth->irq_installed)
     {
         rt_hw_interrupt_mask(eth->irq);
+#ifdef RT_USING_PIC
         rt_pic_detach_irq(eth->irq, eth);
+#endif
         eth->irq_installed = RT_FALSE;
     }
 
@@ -1848,6 +2129,12 @@ rt_err_t macb_eth_common_remove(struct macb_eth *eth)
 
     macb_mii_unregister(eth);
 
+    if (eth->rx_pbufs)
+    {
+        rt_free(eth->rx_pbufs);
+        eth->rx_pbufs = RT_NULL;
+    }
+
     if (eth->dummy_desc)
     {
         rt_dma_free(eth->dev, eth->dummy_desc_size, eth->dummy_desc,
@@ -1858,8 +2145,8 @@ rt_err_t macb_eth_common_remove(struct macb_eth *eth)
 
     if (eth->rx_ring)
     {
-        rt_dma_free(eth->dev, eth->dma_blob_size, eth->rx_ring, eth->dma_blob_handle,
-                RT_DMA_F_LINEAR);
+        macb_platform_dma_free(eth->dev, eth->dma_blob_size, eth->rx_ring,
+                eth->dma_blob_handle, RT_DMA_F_LINEAR);
         eth->rx_ring = RT_NULL;
         eth->dma_blob_size = 0;
     }
@@ -1874,7 +2161,12 @@ static void macb_regs_iounmap(struct macb_eth *eth)
 {
     if (eth->regs)
     {
+#if defined(ARCH_ARM_CORTEX_A9)
+        /* Cortex-A9 legacy BSPs may provide an identity-mapped device window. */
+        RT_UNUSED(eth);
+#else
         rt_iounmap(eth->regs);
+#endif
     }
 }
 
@@ -1903,7 +2195,36 @@ static rt_err_t macb_platform_probe(struct rt_platform_device *pdev)
     }
 
     eth->irq = rt_dm_dev_get_irq(dev, 0);
+#if defined(RT_USING_OFW) && defined(ARCH_ARM_CORTEX_A9)
+    /*
+     * The legacy Cortex-A9 port uses its native GICv2 implementation instead
+     * of RT_USING_PIC.  Decode the standard GIC SPI tuple for Zynq-7000 so the
+     * device-model GEM driver can coexist with that proven interrupt path.
+     */
+    if (eth->irq < 0 && dev->ofw_node)
+    {
+        rt_uint32_t type;
+        rt_uint32_t hwirq;
+
+        if (!rt_ofw_prop_read_u32_index(dev->ofw_node, "interrupts", 0, &type) &&
+            !rt_ofw_prop_read_u32_index(dev->ofw_node, "interrupts", 1, &hwirq))
+        {
+            eth->irq = (type == 0) ? (int)(hwirq + 32U) : (int)(hwirq + 16U);
+        }
+    }
+#endif
+#if defined(RT_USING_OFW) && defined(ARCH_ARM_CORTEX_A9)
+    {
+        rt_uint64_t address;
+
+        if (!rt_dm_dev_get_address(dev, 0, &address, RT_NULL))
+        {
+            eth->regs = (void *)(rt_ubase_t)address;
+        }
+    }
+#else
     eth->regs = rt_dm_dev_iomap(dev, 0);
+#endif
 
     if (!eth->regs)
     {
