@@ -18,6 +18,9 @@ if not GetDepend('BSP_USING_TTC0_TIMER0'):
 if not GetDepend('BSP_USING_CAN0'):
     SrcRemove(src, ['drv_can.c'])
 
+if not GetDepend('BSP_USING_GEM0'):
+    SrcRemove(src, ['builtin_fdt.S', 'drv_gem_dma.c'])
+
 group = DefineGroup('Drivers', src, depend=[''], CPPPATH=[cwd])
 
 Return('group')

@@ -244,11 +244,7 @@ struct macb_dma_desc_64
 #define MACB_RX_RING_SIZE                       32
 #define MACB_TX_RING_SIZE                       16
 #endif
-#if defined(SOC_XILINX_ZYNQ7000)
 #define MACB_RX_BUFFER_SIZE                     1536
-#else
-#define MACB_RX_BUFFER_SIZE                     1536
-#endif
 
 /* RXBS encoding: buffer_bytes / 64 */
 #define MACB_RX_BUFFER_SIZE_DIV64               (MACB_RX_BUFFER_SIZE / 64)

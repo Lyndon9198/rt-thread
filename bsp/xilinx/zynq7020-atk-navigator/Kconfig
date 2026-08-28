@@ -46,4 +46,23 @@ config BSP_USING_CAN0
     default y
     select RT_USING_CAN
 
+config BSP_USING_GEM0
+    bool "Enable PS GEM0 Ethernet"
+    default y
+    select RT_USING_DM
+    select RT_USING_DEV_BUS
+    select RT_USING_ETHERNET
+    select RT_ETHERNET_CADENCE
+    select RT_USING_PHY_V2
+    select RT_USING_DMA
+    select RT_USING_OFW
+    select RT_USING_BUILTIN_FDT
+    select RT_USING_CLK
+    select RT_USING_SAL
+    select RT_USING_LWIP
+    select RT_USING_NETDEV
+
+config RT_BUILTIN_FDT_PATH
+    default "zynq7020-atk-navigator.dtb" if BSP_USING_GEM0
+
 endmenu

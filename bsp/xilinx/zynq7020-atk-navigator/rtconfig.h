@@ -160,8 +160,13 @@
 
 /* Device Drivers */
 
+#define RT_USING_DM
+#define RT_USING_DEV_BUS
 #define RT_USING_DEVICE_IPC
 #define RT_UNAMED_PIPE_NUMBER 64
+#define RT_USING_SYSTEM_WORKQUEUE
+#define RT_SYSTEM_WORKQUEUE_STACKSIZE 2048
+#define RT_SYSTEM_WORKQUEUE_PRIORITY 23
 #define RT_USING_SERIAL
 #define RT_USING_SERIAL_V1
 #define RT_SERIAL_USING_DMA
@@ -172,8 +177,25 @@
 #define RT_CANSND_MSG_TIMEOUT 100
 #define RT_CAN_NB_TX_FIFO_SIZE 256
 #define RT_USING_CLOCK_TIME
+#define RT_USING_ETHERNET
+#define RT_ETHERNET_CADENCE
+#define RT_USING_PHY_V2
 #define RT_USING_WDT
+
+/* Power Management (PM) Domains device drivers */
+
+/* end of Power Management (PM) Domains device drivers */
+#define RT_USING_DMA
+#define RT_USING_OFW
+#define RT_USING_BUILTIN_FDT
+#define RT_BUILTIN_FDT_PATH "zynq7020-atk-navigator.dtb"
+#define RT_FDT_EARLYCON_MSG_SIZE 128
+#define RT_USING_OFW_BUS_RANGES_NUMBER 4
 #define RT_USING_PIN
+#define RT_USING_CLK
+
+/* SoC (System on Chip) Drivers */
+
 /* end of Device Drivers */
 
 /* C/C++ and POSIX layer */
@@ -203,6 +225,67 @@
 
 /* Network */
 
+#define RT_USING_SAL
+#define SAL_INTERNET_CHECK
+#define SOCKET_TABLE_STEP_LEN 4
+
+/* Docking with protocol stacks */
+
+#define SAL_USING_LWIP
+/* end of Docking with protocol stacks */
+#define SAL_USING_POSIX
+#define RT_USING_NETDEV
+#define NETDEV_USING_IFCONFIG
+#define NETDEV_USING_PING
+#define NETDEV_USING_NETSTAT
+#define NETDEV_USING_AUTO_DEFAULT
+#define NETDEV_IPV4 1
+#define NETDEV_IPV6 0
+#define RT_USING_LWIP
+#define RT_USING_LWIP203
+#define RT_USING_LWIP_VER_NUM 0x20003
+#define RT_LWIP_MEM_ALIGNMENT 4
+#define RT_LWIP_IGMP
+#define RT_LWIP_ICMP
+#define RT_LWIP_DNS
+#define RT_LWIP_DHCP
+#define IP_SOF_BROADCAST 1
+#define IP_SOF_BROADCAST_RECV 1
+
+/* Static IPv4 Address */
+
+#define RT_LWIP_IPADDR "192.168.1.30"
+#define RT_LWIP_GWADDR "192.168.1.1"
+#define RT_LWIP_MSKADDR "255.255.255.0"
+/* end of Static IPv4 Address */
+#define RT_LWIP_UDP
+#define RT_LWIP_TCP
+#define RT_LWIP_RAW
+#define RT_MEMP_NUM_NETCONN 8
+#define RT_LWIP_PBUF_NUM 128
+#define RT_LWIP_RAW_PCB_NUM 4
+#define RT_LWIP_UDP_PCB_NUM 4
+#define RT_LWIP_TCP_PCB_NUM 4
+#define RT_LWIP_TCP_SEG_NUM 1024
+#define RT_LWIP_TCP_SND_BUF 262144
+#define RT_LWIP_TCP_WND 524288
+#define RT_LWIP_TCPTHREAD_PRIORITY 10
+#define RT_LWIP_TCPTHREAD_MBOX_SIZE 1024
+#define RT_LWIP_TCPTHREAD_STACKSIZE 4096
+#define LWIP_NO_TX_THREAD
+#define RT_LWIP_ETHTHREAD_PRIORITY 12
+#define RT_LWIP_ETHTHREAD_STACKSIZE 4096
+#define RT_LWIP_ETHTHREAD_MBOX_SIZE 64
+#define LWIP_NETIF_STATUS_CALLBACK 1
+#define LWIP_NETIF_LINK_CALLBACK 1
+#define RT_LWIP_NETIF_NAMESIZE 6
+#define SO_REUSE 1
+#define LWIP_SO_RCVTIMEO 1
+#define LWIP_SO_SNDTIMEO 1
+#define LWIP_SO_RCVBUF 1
+#define LWIP_SO_LINGER 0
+#define LWIP_NETIF_LOOPBACK 0
+#define RT_LWIP_USING_PING
 /* end of Network */
 
 /* Memory protection */
@@ -222,6 +305,8 @@
 
 #define RT_PAGE_AFFINITY_BLOCK_SIZE 0x1000
 #define RT_PAGE_MAX_ORDER 11
+#define RT_USING_MEMBLOCK
+#define RT_INIT_MEMORY_REGIONS 128
 
 /* Debugging */
 
@@ -467,6 +552,7 @@
 #define BSP_USING_WDT
 #define BSP_USING_TTC0_TIMER0
 #define BSP_USING_CAN0
+#define BSP_USING_GEM0
 /* end of ALIENTEK Navigator ZYNQ7020 BSP */
 
 #endif

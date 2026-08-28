@@ -15,7 +15,11 @@
 extern int __bss_end;
 
 #define HEAP_BEGIN      ((void *)&__bss_end)
+#ifdef BSP_USING_GEM0
+#define HEAP_END        ((void *)ZYNQ_GEM_DMA_START)
+#else
 #define HEAP_END        ((void *)ZYNQ_DDR_END)
+#endif
 
 void rt_hw_board_init(void);
 void zynq_private_timer_init(void);

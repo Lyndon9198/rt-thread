@@ -58,6 +58,18 @@
 #define LWIP_SOCKET                 1
 #define LWIP_NETCONN                1
 
+#ifdef SOC_XILINX_ZYNQ7000
+#define LWIP_SUPPORT_CUSTOM_PBUF    1
+#define LWIP_WND_SCALE              1
+#define TCP_RCV_SCALE               4
+#define LWIP_DISABLE_TCP_SANITY_CHECKS 1
+#define LWIP_TCPIP_CORE_LOCKING_INPUT 1
+#define TCP_ACK_EVERY_NTH           4
+#define CHECKSUM_CHECK_IP           0
+#define CHECKSUM_CHECK_UDP          0
+#define CHECKSUM_CHECK_TCP          0
+#endif
+
 #ifdef RT_LWIP_IGMP
 #define LWIP_IGMP                   1
 #else

@@ -32,6 +32,9 @@
 #define ZYNQ_CAN0_IRQ                   60
 #define ZYNQ_CAN0_CLOCK_HZ              100000000U
 
+#define ZYNQ_GEM_DMA_START              0x3FE00000U
+#define ZYNQ_GEM_DMA_SIZE               0x00200000U
+
 #define ZYNQ_SCU_BASE                  0xF8F00000U
 #define ZYNQ_GIC_CPU_BASE              0xF8F00100U
 #define ZYNQ_PRIVATE_TIMER_BASE        0xF8F00600U

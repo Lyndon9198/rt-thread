@@ -11,6 +11,7 @@
 #include "macb.h"
 
 #include <lwip/init.h>
+#include <lwip/pbuf.h>
 
 #if defined(SOC_XILINX_ZYNQ7000)
 #include <cache.h>
@@ -355,7 +356,7 @@ static void macb_set_desc_addr(struct macb_eth *eth, struct macb_dma_desc *desc,
                 ((rt_uint8_t *)desc + sizeof(*desc));
 
         desc64->addrh = (rt_uint32_t)(addr >> 32);
-        rt_hw_wmb();
+        rt_hw_dmb();
     }
 
     desc->addr = (rt_uint32_t)addr;
@@ -870,59 +871,12 @@ static void macb_poll_completions(struct macb_eth *eth)
     }
 }
 
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-#define N1_TX_BATCH_MAX 32U
-
-static struct macb_eth *n1_tx_batch_eth;
-static rt_uint32_t n1_tx_batch_depth;
-static rt_uint32_t n1_tx_batch_pending;
-
-static void n1_macb_tx_batch_flush(void)
-{
-    struct macb_eth *eth = n1_tx_batch_eth;
-
-    if (eth == RT_NULL || n1_tx_batch_pending == 0)
-    {
-        return;
-    }
-    macb_gem_kick_tx(eth);
-    macb_gem_tx_restart(eth);
-    if (eth->irq_installed)
-    {
-        macb_poll_completions(eth);
-    }
-    else
-    {
-        macb_service_traffic(eth);
-    }
-    n1_tx_batch_pending = 0;
-}
-
-void n1_macb_tx_batch_begin(void)
-{
-    n1_tx_batch_depth++;
-}
-
-void n1_macb_tx_batch_end(void)
-{
-    if (n1_tx_batch_depth == 0)
-    {
-        return;
-    }
-    n1_tx_batch_depth--;
-    if (n1_tx_batch_depth == 0)
-    {
-        n1_macb_tx_batch_flush();
-        n1_tx_batch_eth = RT_NULL;
-    }
-}
-#endif
-
 static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
 {
     struct macb_eth *eth = raw_to_macb_eth(dev);
     struct macb_dma_desc *d;
     rt_uint32_t ctrl;
+    rt_uint8_t *buf;
 
     if (!eth->hw_ready || !eth->mac_started)
     {
@@ -939,18 +893,6 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         return -RT_EINVAL;
     }
 
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-    if (n1_tx_batch_depth != 0)
-    {
-        n1_tx_batch_eth = eth;
-        while (rt_sem_take(&eth->tx_sem, 0) != RT_EOK)
-        {
-            n1_macb_tx_batch_flush();
-            macb_tx_cleanup(eth);
-        }
-    }
-    else
-#endif
     if (rt_sem_take(&eth->tx_sem, RT_WAITING_FOREVER) != RT_EOK)
     {
         return -RT_EBUSY;
@@ -958,92 +900,15 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
 
     {
         rt_uint32_t slot = eth->tx_head;
-        rt_uint64_t buf_dma;
-        rt_uint8_t *buf;
+        rt_uint64_t buf_dma = eth->tx_buffer_dma + slot * MACB_RX_BUFFER_SIZE;
 
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        rt_uint32_t t0;
-        extern rt_uint32_t n1_pmu_cycle(void);
-        extern rt_uint64_t n1_tx_copy_cycles;
-        extern rt_uint64_t n1_tx_kick_cycles;
-        extern rt_uint64_t n1_tx_poll_cycles;
-
-        t0 = n1_pmu_cycle();
-#endif
         d = macb_tx_desc_at(eth, slot);
         buf = eth->tx_buffer + slot * MACB_RX_BUFFER_SIZE;
 
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        {
-            extern rt_uint64_t n1_tx_diag_totlen;
-            extern rt_uint64_t n1_tx_diag_len;
-            extern rt_uint64_t n1_tx_diag_next;
-            extern rt_uint64_t n1_tx_diag_type;
-            extern rt_uint64_t n1_tx_diag_flags;
+        pbuf_copy_partial(p, buf, p->tot_len, 0);
+        rt_hw_dmb();
+        macb_dma_flush(eth, buf, p->tot_len);
 
-            if (p->tot_len >= 1400)
-            {
-                n1_tx_diag_totlen = p->tot_len;
-                n1_tx_diag_len = p->len;
-                n1_tx_diag_next = (rt_uint64_t)(rt_uintptr_t)p->next;
-#if LWIP_VERSION_MAJOR >= 2 && LWIP_VERSION_MINOR >= 1
-            n1_tx_diag_type = p->type_internal;
-#else
-            n1_tx_diag_type = p->type;
-#endif
-                n1_tx_diag_flags = p->flags;
-            }
-        }
-#endif
-
-#if defined(SOC_XILINX_ZYNQ7000)
-        /*
-         * Zero-copy TX for single-segment frames whose payload is word
-         * aligned: the GEM DMAs directly out of the referenced memory, which
-         * must stay valid until TX completion. lwiperf references a static
-         * const buffer (never rewritten), and copied heap pbufs live until
-         * ACK, i.e. after local DMA completion. Clean the cache lines so the
-         * DMA sees the data; descriptors are polled via GEM_TX_USED before
-         * the pbuf is freed.
-         */
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        {
-            extern rt_uint64_t n1_tx_d_multi;
-            extern rt_uint64_t n1_tx_d_len;
-            extern rt_uint64_t n1_tx_d_align;
-            extern rt_uint64_t n1_tx_d_custom;
-            extern rt_uint64_t n1_tx_last_payload;
-
-            if (p->next != RT_NULL) n1_tx_d_multi++;
-            if (p->tot_len != p->len) n1_tx_d_len++;
-            if (((rt_uint32_t)(rt_uintptr_t)p->payload) & 3u) n1_tx_d_align++;
-            if (p->flags & PBUF_FLAG_IS_CUSTOM) n1_tx_d_custom++;
-            n1_tx_last_payload = (rt_uint32_t)(rt_uintptr_t)p->payload;
-        }
-#endif
-        if (p->tot_len == p->len && p->next == RT_NULL &&
-            !(p->flags & PBUF_FLAG_IS_CUSTOM))
-        {
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-            extern rt_uint64_t n1_tx_zero_calls;
-            n1_tx_zero_calls++;
-#endif
-            rt_hw_cpu_dcache_clean(p->payload, p->len);
-            buf_dma = (rt_uint64_t)(rt_uintptr_t)p->payload;
-        }
-        else
-#endif
-        {
-            pbuf_copy_partial(p, buf, p->tot_len, 0);
-            rt_hw_dmb();
-            macb_dma_flush(eth, buf, p->tot_len);
-            buf_dma = eth->tx_buffer_dma + slot * MACB_RX_BUFFER_SIZE;
-        }
-
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        n1_tx_copy_cycles += (rt_uint32_t)(n1_pmu_cycle() - t0);
-        t0 = n1_pmu_cycle();
-#endif
         ctrl = (p->tot_len & GEM_TX_LEN_MASK) | GEM_TX_LAST;
         if (slot == MACB_TX_RING_SIZE - 1)
         {
@@ -1051,42 +916,18 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         }
 
         macb_set_desc_addr(eth, d, buf_dma);
-        rt_hw_wmb();
+        rt_hw_dmb();
         d->ctrl = ctrl;
-        rt_hw_wmb();
+        rt_hw_dmb();
         macb_desc_ring_sync(eth, RT_FALSE, RT_TRUE);
 
         eth->tx_head = NEXT_TX(eth->tx_head);
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        if (n1_tx_batch_depth != 0)
-        {
-            n1_tx_batch_pending++;
-            if (n1_tx_batch_pending >= N1_TX_BATCH_MAX)
-            {
-                n1_macb_tx_batch_flush();
-            }
-        }
-        else
-#endif
-        {
-            macb_gem_kick_tx(eth);
-            macb_gem_tx_restart(eth);
-        }
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        n1_tx_kick_cycles += (rt_uint32_t)(n1_pmu_cycle() - t0);
-        t0 = n1_pmu_cycle();
-#endif
+        macb_gem_kick_tx(eth);
+        macb_gem_tx_restart(eth);
         /*
          * With irq_installed: poll completions only. service_traffic()
          * clears ISR and can drop level-triggered MSI/MSIX lines.
          */
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        if (n1_tx_batch_depth != 0)
-        {
-            /* Completion polling is performed once when the batch flushes. */
-        }
-        else
-#endif
         if (eth->irq_installed)
         {
             macb_poll_completions(eth);
@@ -1095,9 +936,6 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         {
             macb_service_traffic(eth);
         }
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-        n1_tx_poll_cycles += (rt_uint32_t)(n1_pmu_cycle() - t0);
-#endif
     }
 
     eth_device_ready(&eth->parent);
