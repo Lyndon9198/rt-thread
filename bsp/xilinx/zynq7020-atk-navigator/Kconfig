@@ -41,4 +41,9 @@ config BSP_USING_TTC0_TIMER0
     default y
     select RT_USING_CLOCK_TIME
 
+config BSP_USING_CAN0
+    bool "Enable PS CAN0"
+    default y
+    select RT_USING_CAN
+
 endmenu
