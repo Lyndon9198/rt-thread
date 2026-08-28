@@ -36,6 +36,23 @@ config BSP_USING_AXI_GPIO0
     default y
     depends on BSP_USING_GPIO
 
+config BSP_USING_TOUCH_I2C
+    bool "Enable GPIO I2C bus for the touch controller"
+    default y
+    depends on BSP_USING_GPIO
+    select RT_USING_I2C
+    select RT_USING_SOFT_I2C
+    select RT_USING_SOFT_I2C0
+
+config RT_SOFT_I2C0_HAS_PIN_DEFAULT
+    default y if BSP_USING_TOUCH_I2C
+
+config RT_SOFT_I2C0_SCL_PIN_DEFAULT
+    default 64 if BSP_USING_TOUCH_I2C
+
+config RT_SOFT_I2C0_SDA_PIN_DEFAULT
+    default 62 if BSP_USING_TOUCH_I2C
+
 config BSP_USING_WDT
     bool "Enable PS watchdog"
     default y

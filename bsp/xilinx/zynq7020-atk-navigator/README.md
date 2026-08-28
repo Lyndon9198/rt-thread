@@ -15,6 +15,7 @@ The current BSP provides:
 - 1 GiB PS DDR heap
 - PS UART0 console
 - PS GPIO pin device with interrupt support
+- GPIO software I2C bus for the touch controller
 - VFP/NEON context management on both Cortex-A9 cores
 - PS watchdog device
 - TTC0 timer0 clock-timer device
@@ -35,6 +36,11 @@ msh />pin mode 118 output
 msh />pin write 118 1
 msh />pin read 118
 ```
+
+The touch connector software I2C bus is registered as `swi2c0`. SCL uses
+GPIO64 (EMIO10) and SDA uses GPIO62 (EMIO8). Both pins use open-drain GPIO
+semantics and therefore require the pull-ups present on the board. Hardware
+scanning detects the FT5246 touch controller at 7-bit address `0x38`.
 
 The watchdog is registered as `wdt`. It supports setting a timeout in whole
 seconds, start, stop, and keepalive through the standard RT-Thread watchdog

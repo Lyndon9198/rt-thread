@@ -46,6 +46,7 @@ struct zynq_pin_irq
 
 static struct zynq_pin_irq pin_irq_table[ZYNQ_PIN_COUNT];
 static struct rt_spinlock gpio_lock = RT_SPINLOCK_INIT;
+static rt_uint32_t gpio_od_mask[ZYNQ_GPIO_BANK_COUNT];
 
 static rt_uint32_t zynq_gpio_bank(rt_base_t pin)
 {
@@ -119,13 +120,21 @@ static void zynq_pin_mode(struct rt_device *device, rt_base_t pin,
     mask = 1U << bit;
     level = rt_spin_lock_irqsave(&gpio_lock);
 
-    if (mode == PIN_MODE_OUTPUT || mode == PIN_MODE_OUTPUT_OD)
+    if (mode == PIN_MODE_OUTPUT_OD)
     {
+        gpio_od_mask[bank] |= mask;
+        __REG32(ZYNQ_GPIO_BASE + GPIO_DIRM_OFFSET(bank)) |= mask;
+        __REG32(ZYNQ_GPIO_BASE + GPIO_OEN_OFFSET(bank)) &= ~mask;
+    }
+    else if (mode == PIN_MODE_OUTPUT)
+    {
+        gpio_od_mask[bank] &= ~mask;
         __REG32(ZYNQ_GPIO_BASE + GPIO_DIRM_OFFSET(bank)) |= mask;
         __REG32(ZYNQ_GPIO_BASE + GPIO_OEN_OFFSET(bank)) |= mask;
     }
     else
     {
+        gpio_od_mask[bank] &= ~mask;
         __REG32(ZYNQ_GPIO_BASE + GPIO_OEN_OFFSET(bank)) &= ~mask;
         __REG32(ZYNQ_GPIO_BASE + GPIO_DIRM_OFFSET(bank)) &= ~mask;
     }
@@ -136,8 +145,10 @@ static void zynq_pin_mode(struct rt_device *device, rt_base_t pin,
 static void zynq_pin_write(struct rt_device *device, rt_base_t pin,
                            rt_uint8_t value)
 {
+    rt_ubase_t level;
     rt_uint32_t bank;
     rt_uint32_t bit;
+    rt_uint32_t bank_bit;
     rt_uint32_t half;
     rt_uint32_t mask;
 
@@ -165,11 +176,30 @@ static void zynq_pin_write(struct rt_device *device, rt_base_t pin,
 
     bank = zynq_gpio_bank(pin);
     bit = zynq_gpio_bank_pin(pin, bank);
+    bank_bit = 1U << bit;
     half = bit >> 4;
     bit &= 0xFU;
     mask = (~(1U << bit) & 0xFFFFU) << 16;
+    level = rt_spin_lock_irqsave(&gpio_lock);
+
+    if (gpio_od_mask[bank] & bank_bit)
+    {
+        if (value == PIN_HIGH)
+        {
+            __REG32(ZYNQ_GPIO_BASE + GPIO_OEN_OFFSET(bank)) &= ~bank_bit;
+        }
+        else
+        {
+            __REG32(ZYNQ_GPIO_BASE + bank * 8U + half * 4U) = mask;
+            __REG32(ZYNQ_GPIO_BASE + GPIO_OEN_OFFSET(bank)) |= bank_bit;
+        }
+        rt_spin_unlock_irqrestore(&gpio_lock, level);
+        return;
+    }
+
     __REG32(ZYNQ_GPIO_BASE + bank * 8U + half * 4U) =
         mask | ((value == PIN_HIGH ? 1U : 0U) << bit);
+    rt_spin_unlock_irqrestore(&gpio_lock, level);
 }
 
 static rt_ssize_t zynq_pin_read(struct rt_device *device, rt_base_t pin)
