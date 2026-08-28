@@ -108,11 +108,11 @@ static void zynq_uart_isr(int vector, void *parameter)
     rt_uint32_t status = UART_ISR(uart->base);
 
     RT_UNUSED(vector);
-    UART_ISR(uart->base) = status;
     if (status & UART_IXR_RX_MASK)
     {
         rt_hw_serial_isr(&uart->serial, RT_SERIAL_EVENT_RX_IND);
     }
+    UART_ISR(uart->base) = status;
 }
 
 static rt_err_t zynq_uart_configure(struct rt_serial_device *serial,
