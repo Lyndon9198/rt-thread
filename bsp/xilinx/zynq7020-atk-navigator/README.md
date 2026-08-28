@@ -18,6 +18,7 @@ The current BSP provides:
 - VFP/NEON context management on both Cortex-A9 cores
 - PS watchdog device
 - TTC0 timer0 clock-timer device
+- PS CAN0 device
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
@@ -32,6 +33,16 @@ TTC0 timer0 is registered as `timer0` through RT-Thread's current
 `rt_clock_timer` interface. Its fixed counter frequency is 976562 Hz (125 MHz
 divided by 128), with a 16-bit interval counter and interrupt-driven one-shot
 or periodic operation.
+
+PS CAN0 is registered as `can0`. The driver supports standard and extended
+data or remote frames, interrupt-driven receive and transmit, normal, listen,
+and internal loopback modes, and 125 kbit/s, 250 kbit/s, 500 kbit/s, or
+1 Mbit/s operation. The CAN reference clock is 100 MHz for the hardware design
+used by this BSP.
+
+CAN0 is routed through EMIO: RX is connected to FPGA pin L16 and TX to J14,
+both using 3.3 V I/O. These signals are controller-level CAN RX/TX and require
+an external 3.3 V CAN transceiver before they can be connected to a CAN bus.
 
 ## Toolchain
 
