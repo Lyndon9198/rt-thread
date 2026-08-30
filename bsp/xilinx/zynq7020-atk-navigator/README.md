@@ -1,5 +1,7 @@
 # ZYNQ7020 ATK Navigator BSP
 
+[中文说明](README_zh.md)
+
 ## Introduction
 
 This BSP supports the ALIENTEK Navigator board based on the Xilinx Zynq-7020
