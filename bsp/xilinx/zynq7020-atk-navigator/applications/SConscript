@@ -2,6 +2,8 @@ from building import *
 
 cwd = GetCurrentDir()
 src = Glob('*.c')
+if GetDepend('BSP_USING_GEM0'):
+    src += [cwd + '/../../../../components/net/lwip/lwip-2.0.3/src/apps/lwiperf/lwiperf.c']
 group = DefineGroup('Applications', src, depend=[''], CPPPATH=[cwd])
 
 Return('group')

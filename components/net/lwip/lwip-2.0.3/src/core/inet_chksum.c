@@ -604,10 +604,50 @@ u16_t
 lwip_chksum_copy(void *dst, const void *src, u16_t len)
 {
 #if defined(SOC_XILINX_ZYNQ7000)
+  if ((((mem_ptr_t)dst | (mem_ptr_t)src) & 3U) == 0U) {
+    const u32_t *s = (const u32_t *)src;
+    u32_t *d = (u32_t *)dst;
+    u32_t sum0 = 0;
+    u32_t sum1 = 0;
+    u32_t sum2 = 0;
+    u32_t sum3 = 0;
+    u32_t sum;
+    u16_t left = len;
+
+    while (left >= 16U) {
+      u32_t v0 = s[0];
+      u32_t v1 = s[1];
+      u32_t v2 = s[2];
+      u32_t v3 = s[3];
+
+      d[0] = v0;
+      d[1] = v1;
+      d[2] = v2;
+      d[3] = v3;
+      sum0 += (v0 & 0xffffU) + (v0 >> 16);
+      sum1 += (v1 & 0xffffU) + (v1 >> 16);
+      sum2 += (v2 & 0xffffU) + (v2 >> 16);
+      sum3 += (v3 & 0xffffU) + (v3 >> 16);
+      s += 4;
+      d += 4;
+      left = (u16_t)(left - 16U);
+    }
+    while (left >= 4U) {
+      u32_t v = *s++;
+      *d++ = v;
+      sum0 += (v & 0xffffU) + (v >> 16);
+      left = (u16_t)(left - 4U);
+    }
+    sum = (sum0 + sum1) + (sum2 + sum3);
+    if (left != 0U) {
+      MEMCPY(d, s, left);
+      sum += LWIP_CHKSUM(s, left);
+    }
+    sum = (sum & 0xffffU) + (sum >> 16);
+    sum = (sum & 0xffffU) + (sum >> 16);
+    return (u16_t)sum;
+  }
   MEMCPY(dst, src, len);
-  /* The N1 TX generator repeatedly copies a cache-hot immutable source.
-   * Checksum those identical bytes instead of re-reading the freshly
-   * allocated destination pbuf. */
   return LWIP_CHKSUM(src, len);
 #else
   MEMCPY(dst, src, len);

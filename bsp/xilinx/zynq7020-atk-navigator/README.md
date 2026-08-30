@@ -52,11 +52,22 @@ is reserved for non-cacheable GEM descriptor and packet storage; it is not
 included in the system heap.
 
 Hardware validation used a direct gigabit link to a Linux host. ICMP passed
-without packet loss, and an iperf2 TCP host-to-board test sustained about
-850 Mbit/s for 15 seconds. The conservative copy-based board-to-host path
-sustained about 250 Mbit/s. Higher transmit rates require asynchronous TX
-descriptor batching or reference-counted zero-copy TX; neither is enabled
-because the buffer lifetime must remain correct under SMP.
+without packet loss. A 20-second iperf2 reverse test measured 949 Mbit/s from
+the host to the board and 640 Mbit/s from the board to the host; RT-Thread's
+report for the latter direction was 654 Mbit/s. The TX path batches descriptor
+kicks and directly maps single-pbuf TCP segments. These buffers remain owned
+by the TCP unacknowledged queue until an ACK arrives, which is later than GEM
+DMA completion.
+
+Start the server from MSH and run an iperf2 bidirectional test on the host:
+
+```text
+msh />iperf_server
+```
+
+```sh
+iperf -c <board-ip> -r -t 20 -i 5
+```
 
 ## Toolchain
 

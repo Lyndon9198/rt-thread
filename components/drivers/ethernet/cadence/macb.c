@@ -65,7 +65,7 @@ static void macb_mmio_posted_barrier(struct macb_eth *eth)
     (void)macb_readl(eth, GEM_NCR);
     if (!eth->native_io)
     {
-        rt_hw_dmb();
+        rt_hw_wmb();
     }
 }
 
@@ -871,12 +871,59 @@ static void macb_poll_completions(struct macb_eth *eth)
     }
 }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+#define MACB_TX_BATCH_MAX 32U
+
+static struct macb_eth *macb_tx_batch_eth;
+static rt_uint32_t macb_tx_batch_depth;
+static rt_uint32_t macb_tx_batch_pending;
+
+static void macb_tx_batch_flush(void)
+{
+    struct macb_eth *eth = macb_tx_batch_eth;
+
+    if (eth == RT_NULL || macb_tx_batch_pending == 0)
+    {
+        return;
+    }
+    macb_gem_kick_tx(eth);
+    macb_gem_tx_restart(eth);
+    if (eth->irq_installed)
+    {
+        macb_poll_completions(eth);
+    }
+    else
+    {
+        macb_service_traffic(eth);
+    }
+    macb_tx_batch_pending = 0;
+}
+
+void macb_tx_batch_begin(void)
+{
+    macb_tx_batch_depth++;
+}
+
+void macb_tx_batch_end(void)
+{
+    if (macb_tx_batch_depth == 0)
+    {
+        return;
+    }
+    macb_tx_batch_depth--;
+    if (macb_tx_batch_depth == 0)
+    {
+        macb_tx_batch_flush();
+        macb_tx_batch_eth = RT_NULL;
+    }
+}
+#endif
+
 static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
 {
     struct macb_eth *eth = raw_to_macb_eth(dev);
     struct macb_dma_desc *d;
     rt_uint32_t ctrl;
-    rt_uint8_t *buf;
 
     if (!eth->hw_ready || !eth->mac_started)
     {
@@ -893,6 +940,18 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         return -RT_EINVAL;
     }
 
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+    if (macb_tx_batch_depth != 0)
+    {
+        macb_tx_batch_eth = eth;
+        while (rt_sem_take(&eth->tx_sem, 0) != RT_EOK)
+        {
+            macb_tx_batch_flush();
+            macb_tx_cleanup(eth);
+        }
+    }
+    else
+#endif
     if (rt_sem_take(&eth->tx_sem, RT_WAITING_FOREVER) != RT_EOK)
     {
         return -RT_EBUSY;
@@ -900,14 +959,36 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
 
     {
         rt_uint32_t slot = eth->tx_head;
-        rt_uint64_t buf_dma = eth->tx_buffer_dma + slot * MACB_RX_BUFFER_SIZE;
+        rt_uint64_t buf_dma;
+        rt_uint8_t *buf;
 
         d = macb_tx_desc_at(eth, slot);
         buf = eth->tx_buffer + slot * MACB_RX_BUFFER_SIZE;
 
-        pbuf_copy_partial(p, buf, p->tot_len, 0);
-        rt_hw_dmb();
-        macb_dma_flush(eth, buf, p->tot_len);
+#if defined(SOC_XILINX_ZYNQ7000)
+        /*
+         * Zero-copy TX for single-segment frames whose payload is word
+         * aligned: the GEM DMAs directly out of the referenced memory, which
+         * must stay valid until TX completion. lwiperf references a static
+         * const buffer (never rewritten), and copied heap pbufs live until
+         * ACK, i.e. after local DMA completion. Clean the cache lines so the
+         * DMA sees the data; descriptors are polled via GEM_TX_USED before
+         * the pbuf is freed.
+         */
+        if (p->tot_len == p->len && p->next == RT_NULL &&
+            !(p->flags & PBUF_FLAG_IS_CUSTOM))
+        {
+            rt_hw_cpu_dcache_clean(p->payload, p->len);
+            buf_dma = (rt_uint64_t)(rt_uintptr_t)p->payload;
+        }
+        else
+#endif
+        {
+            pbuf_copy_partial(p, buf, p->tot_len, 0);
+            rt_hw_dmb();
+            macb_dma_flush(eth, buf, p->tot_len);
+            buf_dma = eth->tx_buffer_dma + slot * MACB_RX_BUFFER_SIZE;
+        }
 
         ctrl = (p->tot_len & GEM_TX_LEN_MASK) | GEM_TX_LAST;
         if (slot == MACB_TX_RING_SIZE - 1)
@@ -916,18 +997,38 @@ static rt_err_t macb_eth_tx(rt_device_t dev, struct pbuf *p)
         }
 
         macb_set_desc_addr(eth, d, buf_dma);
-        rt_hw_dmb();
+        rt_hw_wmb();
         d->ctrl = ctrl;
-        rt_hw_dmb();
+        rt_hw_wmb();
         macb_desc_ring_sync(eth, RT_FALSE, RT_TRUE);
 
         eth->tx_head = NEXT_TX(eth->tx_head);
-        macb_gem_kick_tx(eth);
-        macb_gem_tx_restart(eth);
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+        if (macb_tx_batch_depth != 0)
+        {
+            macb_tx_batch_pending++;
+            if (macb_tx_batch_pending >= MACB_TX_BATCH_MAX)
+            {
+                macb_tx_batch_flush();
+            }
+        }
+        else
+#endif
+        {
+            macb_gem_kick_tx(eth);
+            macb_gem_tx_restart(eth);
+        }
         /*
          * With irq_installed: poll completions only. service_traffic()
          * clears ISR and can drop level-triggered MSI/MSIX lines.
          */
+#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
+        if (macb_tx_batch_depth != 0)
+        {
+            /* Completion polling is performed once when the batch flushes. */
+        }
+        else
+#endif
         if (eth->irq_installed)
         {
             macb_poll_completions(eth);

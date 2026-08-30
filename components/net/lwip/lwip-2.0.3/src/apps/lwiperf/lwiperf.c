@@ -47,27 +47,10 @@
 
 #include "lwip/apps/lwiperf.h"
 
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-#define LWIPERF_DBG(...) rt_kprintf(__VA_ARGS__)
-#else
-#define LWIPERF_DBG(...)
-#endif
-
 #include "lwip/tcp.h"
 #include "lwip/sys.h"
 
 #include <string.h>
-
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-rt_uint64_t n1_lwiperf_send_calls;
-rt_uint64_t n1_lwiperf_send_segments;
-rt_uint64_t n1_lwiperf_send_max_batch;
-rt_uint64_t n1_lwiperf_send_errmem;
-rt_uint64_t n1_lwiperf_ack_calls;
-rt_uint64_t n1_lwiperf_ack_bytes;
-rt_uint64_t n1_lwiperf_sndbuf_enter;
-rt_uint64_t n1_lwiperf_sndbuf_exit;
-#endif
 
 /* Currently, only TCP-over-IPv4 is implemented (does iperf support IPv6 anyway?) */
 #if LWIP_IPV4 && LWIP_TCP && LWIP_CALLBACK_API
@@ -277,13 +260,6 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
   u16_t txlen_max;
   void* txptr;
   u8_t apiflags;
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-  u32_t batch = 0;
-
-  n1_lwiperf_send_calls++;
-  n1_lwiperf_sndbuf_enter += tcp_sndbuf(conn->conn_pcb);
-#endif
-
   LWIP_ASSERT("conn invalid", (conn != NULL) && conn->base.tcp && (conn->base.server == 0));
 
   do {
@@ -329,10 +305,7 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
       if (conn->bytes_transferred == 48) { /* @todo: fix this for intermediate settings, too */
         txlen_max = TCP_MSS - 24;
       }
-      /* Copy into one contiguous pbuf so the N1 GEM can DMA the frame
-       * zero-copy from a single descriptor (PBUF_ROM + header pbuf would
-       * be chained and force a driver-side copy instead). */
-      apiflags = TCP_WRITE_FLAG_COPY;
+      apiflags = TCP_WRITE_FLAG_MORE;
       send_more = 1;
     }
     txlen = txlen_max;
@@ -345,28 +318,11 @@ lwiperf_tcp_client_send_more(lwiperf_state_tcp_t* conn)
 
     if (err == ERR_OK) {
       conn->bytes_transferred += txlen;
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-      batch++;
-      n1_lwiperf_send_segments++;
-#endif
-      if ((conn->bytes_transferred % (5000 * TCP_MSS)) < (u32_t)txlen) {
-      }
     } else {
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-      if (err == ERR_MEM) {
-        n1_lwiperf_send_errmem++;
-      }
-#endif
       send_more = 0;
     }
   } while(send_more);
 
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-  if (batch > n1_lwiperf_send_max_batch) {
-    n1_lwiperf_send_max_batch = batch;
-  }
-  n1_lwiperf_sndbuf_exit += tcp_sndbuf(conn->conn_pcb);
-#endif
   tcp_output(conn->conn_pcb);
   return ERR_OK;
 }
@@ -382,11 +338,6 @@ lwiperf_tcp_client_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
   LWIP_UNUSED_ARG(len);
 
   conn->poll_count = 0;
-
-#if defined(SOC_XILINX_ZYNQ7000) && defined(RT_USING_SMP)
-  n1_lwiperf_ack_calls++;
-  n1_lwiperf_ack_bytes += len;
-#endif
 
   conn->acked_pending += len;
   if (conn->acked_pending < (LWIPERF_TCP_REFILL_MSS * TCP_MSS)) {
