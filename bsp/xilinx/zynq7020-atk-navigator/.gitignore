@@ -6,6 +6,7 @@
 /*.elf
 /*.map
 /*.asm
+/*.scr
 /*.o
 /applications/*.o
 /board/*.o

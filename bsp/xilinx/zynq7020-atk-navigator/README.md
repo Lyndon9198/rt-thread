@@ -103,6 +103,47 @@ dcache flush
 go 0x00200000
 ```
 
+### Boot from eMMC
+
+The board-mounted eMMC is U-Boot device `mmc 1`. Its first partition is FAT
+and can hold RT-Thread beside the existing Linux boot files. Generate the
+U-Boot script without committing the generated `rtthread.scr` binary:
+
+```sh
+mkimage -A arm -O rtos -T script -C none \
+    -n "RT-Thread Zynq7020" -d rtthread.cmd rtthread.scr
+```
+
+Copy `rtthread.bin` and `rtthread.scr` to the root of eMMC partition 1. They
+can also be downloaded and written from the U-Boot prompt:
+
+```text
+mmc dev 1
+mmc rescan
+tftpboot ${loadaddr} rtthread.bin
+fatwrite mmc 1:1 ${loadaddr} rtthread.bin ${filesize}
+tftpboot ${loadaddr} rtthread.scr
+fatwrite mmc 1:1 ${loadaddr} rtthread.scr ${filesize}
+```
+
+Test the eMMC copy before changing the persistent boot command:
+
+```text
+fatload mmc 1:1 ${loadaddr} rtthread.scr
+source ${loadaddr}
+```
+
+After the test succeeds, select RT-Thread at power-on:
+
+```text
+setenv bootcmd 'mmc dev 1; mmc rescan; fatload mmc 1:1 ${loadaddr} rtthread.scr; source ${loadaddr}'
+saveenv
+```
+
+The script is named `rtthread.scr`, rather than `boot.scr`, so the existing
+Linux boot script remains available. Restore the previous `bootcmd` to return
+to Linux.
+
 UART0 uses 115200 baud, 8 data bits, no parity, and 1 stop bit.
 
 ## Notes
