@@ -26,6 +26,16 @@ PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
 EMIO0-EMIO63. Pull-up and pull-down settings belong to the Zynq MIO pin-control
 registers and are not changed by the GPIO direction API.
 
+AXI GPIO0 is mapped at `0x41200000`. Its two output-only bits are appended to
+the same RT-Thread `pin` device. Pin 118 (`AXI_GPIO0_0` or `PLLED0`) drives H15,
+and pin 119 (`AXI_GPIO0_1` or `PLLED1`) drives L15:
+
+```text
+msh />pin mode 118 output
+msh />pin write 118 1
+msh />pin read 118
+```
+
 The watchdog is registered as `wdt`. It supports setting a timeout in whole
 seconds, start, stop, and keepalive through the standard RT-Thread watchdog
 device controls.

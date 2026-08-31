@@ -31,6 +31,11 @@ config BSP_USING_GPIO
     default y
     select RT_USING_PIN
 
+config BSP_USING_AXI_GPIO0
+    bool "Enable AXI GPIO0 (two PL LEDs)"
+    default y
+    depends on BSP_USING_GPIO
+
 config BSP_USING_WDT
     bool "Enable PS watchdog"
     default y

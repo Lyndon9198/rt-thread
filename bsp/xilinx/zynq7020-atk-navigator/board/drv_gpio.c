@@ -26,6 +26,17 @@
 
 #define ZYNQ_GPIO_BANK_COUNT           4U
 
+#ifdef BSP_USING_AXI_GPIO0
+#define AXI_GPIO0_BASE                 0x41200000U
+#define AXI_GPIO_DATA_OFFSET           0x00U
+#define AXI_GPIO_TRI_OFFSET            0x04U
+#define AXI_GPIO0_WIDTH                2U
+#define AXI_GPIO0_PIN_BASE             ZYNQ_GPIO_PIN_COUNT
+#define ZYNQ_PIN_COUNT                 (ZYNQ_GPIO_PIN_COUNT + AXI_GPIO0_WIDTH)
+#else
+#define ZYNQ_PIN_COUNT                 ZYNQ_GPIO_PIN_COUNT
+#endif
+
 struct zynq_pin_irq
 {
     void (*hdr)(void *args);
@@ -33,7 +44,7 @@ struct zynq_pin_irq
     rt_uint8_t mode;
 };
 
-static struct zynq_pin_irq pin_irq_table[ZYNQ_GPIO_PIN_COUNT];
+static struct zynq_pin_irq pin_irq_table[ZYNQ_PIN_COUNT];
 static struct rt_spinlock gpio_lock = RT_SPINLOCK_INIT;
 
 static rt_uint32_t zynq_gpio_bank(rt_base_t pin)
@@ -62,6 +73,11 @@ static rt_uint32_t zynq_gpio_bank_pin(rt_base_t pin, rt_uint32_t bank)
 
 static rt_bool_t zynq_gpio_pin_valid(rt_base_t pin)
 {
+    return pin >= 0 && pin < ZYNQ_PIN_COUNT;
+}
+
+static rt_bool_t zynq_gpio_is_ps_pin(rt_base_t pin)
+{
     return pin >= 0 && pin < ZYNQ_GPIO_PIN_COUNT;
 }
 
@@ -78,6 +94,25 @@ static void zynq_pin_mode(struct rt_device *device, rt_base_t pin,
     {
         return;
     }
+
+#ifdef BSP_USING_AXI_GPIO0
+    if (!zynq_gpio_is_ps_pin(pin))
+    {
+        rt_uint32_t mask = 1U << (pin - AXI_GPIO0_PIN_BASE);
+
+        level = rt_spin_lock_irqsave(&gpio_lock);
+        if (mode == PIN_MODE_OUTPUT || mode == PIN_MODE_OUTPUT_OD)
+        {
+            __REG32(AXI_GPIO0_BASE + AXI_GPIO_TRI_OFFSET) &= ~mask;
+        }
+        else
+        {
+            __REG32(AXI_GPIO0_BASE + AXI_GPIO_TRI_OFFSET) |= mask;
+        }
+        rt_spin_unlock_irqrestore(&gpio_lock, level);
+        return;
+    }
+#endif
 
     bank = zynq_gpio_bank(pin);
     bit = zynq_gpio_bank_pin(pin, bank);
@@ -112,6 +147,22 @@ static void zynq_pin_write(struct rt_device *device, rt_base_t pin,
         return;
     }
 
+#ifdef BSP_USING_AXI_GPIO0
+    if (!zynq_gpio_is_ps_pin(pin))
+    {
+        rt_ubase_t level;
+        rt_uint32_t mask = 1U << (pin - AXI_GPIO0_PIN_BASE);
+        rt_uint32_t data;
+
+        level = rt_spin_lock_irqsave(&gpio_lock);
+        data = __REG32(AXI_GPIO0_BASE + AXI_GPIO_DATA_OFFSET);
+        data = value == PIN_HIGH ? data | mask : data & ~mask;
+        __REG32(AXI_GPIO0_BASE + AXI_GPIO_DATA_OFFSET) = data;
+        rt_spin_unlock_irqrestore(&gpio_lock, level);
+        return;
+    }
+#endif
+
     bank = zynq_gpio_bank(pin);
     bit = zynq_gpio_bank_pin(pin, bank);
     half = bit >> 4;
@@ -132,6 +183,15 @@ static rt_ssize_t zynq_pin_read(struct rt_device *device, rt_base_t pin)
         return -RT_EINVAL;
     }
 
+#ifdef BSP_USING_AXI_GPIO0
+    if (!zynq_gpio_is_ps_pin(pin))
+    {
+        rt_uint32_t bit = pin - AXI_GPIO0_PIN_BASE;
+
+        return (__REG32(AXI_GPIO0_BASE + AXI_GPIO_DATA_OFFSET) >> bit) & 1U;
+    }
+#endif
+
     bank = zynq_gpio_bank(pin);
     bit = zynq_gpio_bank_pin(pin, bank);
     return (__REG32(ZYNQ_GPIO_BASE + GPIO_DATA_RO_OFFSET(bank)) >> bit) & 1U;
@@ -150,9 +210,23 @@ static rt_base_t zynq_pin_get(const char *name)
     }
     if (name[0] == ' ' && name[1] == '\0')
     {
-        rt_kprintf(" MIO0-MIO53, EMIO0-EMIO63\n");
+        rt_kprintf(" MIO0-MIO53, EMIO0-EMIO63");
+#ifdef BSP_USING_AXI_GPIO0
+        rt_kprintf(", AXI_GPIO0_0-AXI_GPIO0_1, PLLED0-PLLED1");
+#endif
+        rt_kprintf("\n");
         return -RT_EINVAL;
     }
+#ifdef BSP_USING_AXI_GPIO0
+    if (rt_strcmp(name, "PLLED0") == 0 || rt_strcmp(name, "AXI_GPIO0_0") == 0)
+    {
+        return AXI_GPIO0_PIN_BASE;
+    }
+    if (rt_strcmp(name, "PLLED1") == 0 || rt_strcmp(name, "AXI_GPIO0_1") == 0)
+    {
+        return AXI_GPIO0_PIN_BASE + 1;
+    }
+#endif
     if (rt_strncmp(name, "MIO", 3) == 0)
     {
         number = name + 3;
@@ -198,7 +272,7 @@ static rt_err_t zynq_pin_attach_irq(struct rt_device *device, rt_base_t pin,
     struct zynq_pin_irq *irq;
 
     RT_UNUSED(device);
-    if (!zynq_gpio_pin_valid(pin) || mode > PIN_IRQ_MODE_LOW_LEVEL || !hdr)
+    if (!zynq_gpio_is_ps_pin(pin) || mode > PIN_IRQ_MODE_LOW_LEVEL || !hdr)
     {
         return -RT_EINVAL;
     }
@@ -224,7 +298,7 @@ static rt_err_t zynq_pin_detach_irq(struct rt_device *device, rt_base_t pin)
     rt_uint32_t bit;
 
     RT_UNUSED(device);
-    if (!zynq_gpio_pin_valid(pin))
+    if (!zynq_gpio_is_ps_pin(pin))
     {
         return -RT_EINVAL;
     }
@@ -253,7 +327,7 @@ static rt_err_t zynq_pin_irq_enable(struct rt_device *device, rt_base_t pin,
     rt_uint8_t mode;
 
     RT_UNUSED(device);
-    if (!zynq_gpio_pin_valid(pin))
+    if (!zynq_gpio_is_ps_pin(pin))
     {
         return -RT_EINVAL;
     }
@@ -358,6 +432,10 @@ static int zynq_gpio_init(void)
     }
     rt_hw_interrupt_install(ZYNQ_GPIO_IRQ, zynq_gpio_isr, RT_NULL, "gpio");
     rt_hw_interrupt_umask(ZYNQ_GPIO_IRQ);
+#ifdef BSP_USING_AXI_GPIO0
+    __REG32(AXI_GPIO0_BASE + AXI_GPIO_TRI_OFFSET) &=
+        ~((1U << AXI_GPIO0_WIDTH) - 1U);
+#endif
     return rt_device_pin_register("pin", &zynq_pin_ops, RT_NULL);
 }
 INIT_BOARD_EXPORT(zynq_gpio_init);
