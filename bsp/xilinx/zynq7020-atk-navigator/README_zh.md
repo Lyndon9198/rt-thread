@@ -39,6 +39,7 @@ Hardware Drivers Config
 | 配置项 | 设备或功能 |
 | --- | --- |
 | `BSP_USING_UART0` | PS UART0，控制台 `uart0` |
+| `BSP_USING_UART1` | PS UART1，设备 `uart1`，内部回环可测试 |
 | `BSP_USING_GPIO` | PS MIO/EMIO `pin` 设备 |
 | `BSP_USING_AXI_GPIO0` | PL LED，pin 118/119 |
 | `BSP_USING_TOUCH_I2C` | FT5246 使用的软件 I2C `swi2c0` |
@@ -97,6 +98,22 @@ sf read 0 64
 
 `qspi_test rw` 只会在末尾 4 KiB 扇区完全为空时进行写、读、擦除验证，
 并在结束后确认恢复为 `0xff`。禁止擦写 BootROM 启动镜像或 U-Boot 环境。
+
+## UART1
+
+UART1 注册为 `uart1`，基地址 `0xe0001000`、中断 82，支持与 UART0 相同
+的波特率、数据位、校验位、停止位和中断接收。无需外部接线即可验证控制器
+数据通路：
+
+```text
+uart1_loopback
+```
+
+当前 Vivado 设计虽然把 UART1 设置为 EMIO，却在 PL 顶层将 RX 固定为 1，
+且 TX 未连接，因此现有 bitstream 无法从外部引脚收发 UART1。要接第二个
+USB 转串口，需在 Vivado 中导出 PS 的 `UART1_TX`/`UART1_RX` EMIO，约束到
+合适的 3.3 V PL 管脚，重新生成 bitstream/XSA，并交叉连接 TX、RX 和 GND。
+RT-Thread 驱动不会替 Vivado 分配 PL 管脚。
 
 ## USB0 Host
 

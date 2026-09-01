@@ -3,7 +3,7 @@ from building import *
 cwd = GetCurrentDir()
 src = Glob('*.c') + Glob('*.S')
 
-if not GetDepend('BSP_USING_UART0'):
+if not GetDepend('BSP_USING_UART0') and not GetDepend('BSP_USING_UART1'):
     SrcRemove(src, ['drv_uart.c'])
 
 if not GetDepend('BSP_USING_GPIO'):

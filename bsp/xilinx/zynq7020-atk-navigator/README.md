@@ -14,6 +14,7 @@ The current BSP provides:
 - MMU and cache
 - 1 GiB PS DDR heap
 - PS UART0 console
+- PS UART1 device (EMIO controller; current PL design does not export pins)
 - PS GPIO pin device with interrupt support
 - GPIO software I2C bus for the touch controller
 - VFP/NEON context management on both Cortex-A9 cores
@@ -211,6 +212,23 @@ disabling either can cause corrupted descriptors or control transfers on the
 Cortex-A9.
 
 UART0 uses 115200 baud, 8 data bits, no parity, and 1 stop bit.
+
+When `BSP_USING_UART1` is enabled, the second PS UART is registered as
+`uart1` at `0xe0001000`, interrupt 82. The controller supports the same baud,
+data-bit, parity, stop-bit and interrupt-driven receive operations as UART0.
+Its controller datapath can be checked without external wiring:
+
+```text
+uart1_loopback
+```
+
+The supplied Vivado design enables UART1 through EMIO but currently ties its
+RX input high and leaves TX unconnected in the PL top level. Therefore the
+saved bitstream cannot provide external UART1 signals. To connect a second
+serial adapter, export the processing-system `UART1_TX` and `UART1_RX` EMIO
+signals, constrain them to suitable 3.3 V PL pins, rebuild the bitstream/XSA,
+and cross-connect TX/RX/GND. The RT-Thread driver itself does not assign PL
+pins.
 
 ## Notes
 

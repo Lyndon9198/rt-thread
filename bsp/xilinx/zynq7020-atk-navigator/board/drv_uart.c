@@ -37,6 +37,8 @@
 #define UART_MR_PARITY_NONE     (4U << 3)
 #define UART_MR_STOP_MASK       (3U << 6)
 #define UART_MR_STOP_2          (2U << 6)
+#define UART_MR_CHMODE_MASK     (3U << 8)
+#define UART_MR_CHMODE_LOCAL    (2U << 8)
 #define UART_IXR_RXTRIG         (1U << 0)
 #define UART_IXR_RXOVR          (1U << 5)
 #define UART_IXR_TOUT           (1U << 8)
@@ -51,11 +53,21 @@ struct zynq_uart
     struct rt_serial_device serial;
 };
 
+#ifdef BSP_USING_UART0
 static struct zynq_uart uart0 =
 {
     .base = ZYNQ_UART0_BASE,
     .irq = ZYNQ_UART0_IRQ,
 };
+#endif
+
+#ifdef BSP_USING_UART1
+static struct zynq_uart uart1 =
+{
+    .base = ZYNQ_UART1_BASE,
+    .irq = ZYNQ_UART1_IRQ,
+};
+#endif
 
 static rt_err_t zynq_uart_set_baudrate(struct zynq_uart *uart,
                                        rt_uint32_t baudrate)
@@ -120,6 +132,7 @@ static rt_err_t zynq_uart_configure(struct rt_serial_device *serial,
 {
     struct zynq_uart *uart = serial->parent.user_data;
     rt_uint32_t mode = UART_MR(uart->base);
+    rt_uint32_t timeout;
 
     mode &= ~(UART_MR_CLKSEL | UART_MR_CHARLEN_MASK |
               UART_MR_PARITY_MASK | UART_MR_STOP_MASK);
@@ -161,8 +174,14 @@ static rt_err_t zynq_uart_configure(struct rt_serial_device *serial,
 
     UART_CR(uart->base) = UART_CR_RXDIS | UART_CR_TXDIS;
     UART_CR(uart->base) = UART_CR_RXRST | UART_CR_TXRST;
-    while (UART_CR(uart->base) & (UART_CR_RXRST | UART_CR_TXRST))
+    timeout = 1000000U;
+    while ((UART_CR(uart->base) & (UART_CR_RXRST | UART_CR_TXRST)) && timeout)
     {
+        timeout--;
+    }
+    if (timeout == 0U)
+    {
+        return -RT_ETIMEOUT;
     }
     UART_MR(uart->base) = mode;
     if (zynq_uart_set_baudrate(uart, configure->baud_rate) != RT_EOK)
@@ -229,18 +248,96 @@ static const struct rt_uart_ops zynq_uart_ops =
     zynq_uart_getc,
 };
 
-static int rt_hw_uart_init(void)
+static rt_err_t zynq_uart_register(struct zynq_uart *uart, const char *name)
 {
     struct serial_configure configure = RT_SERIAL_CONFIG_DEFAULT;
 
-    UART_IDR(uart0.base) = 0xFFFFFFFFU;
-    UART_ISR(uart0.base) = 0xFFFFFFFFU;
-    uart0.serial.ops = &zynq_uart_ops;
-    uart0.serial.config = configure;
+    UART_IDR(uart->base) = 0xFFFFFFFFU;
+    UART_ISR(uart->base) = 0xFFFFFFFFU;
+    uart->serial.ops = &zynq_uart_ops;
+    uart->serial.config = configure;
 
-    rt_hw_interrupt_install(uart0.irq, zynq_uart_isr, &uart0, "uart0");
-    return rt_hw_serial_register(&uart0.serial, "uart0",
+    rt_hw_interrupt_install(uart->irq, zynq_uart_isr, uart, name);
+    return rt_hw_serial_register(&uart->serial, name,
                                  RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX,
-                                 &uart0);
+                                 uart);
+}
+
+static int rt_hw_uart_init(void)
+{
+    rt_err_t result = RT_EOK;
+
+#ifdef BSP_USING_UART0
+    result = zynq_uart_register(&uart0, "uart0");
+#endif
+#ifdef BSP_USING_UART1
+    if (result == RT_EOK)
+    {
+        result = zynq_uart_register(&uart1, "uart1");
+    }
+#endif
+    return result;
 }
 INIT_BOARD_EXPORT(rt_hw_uart_init);
+
+#ifdef BSP_USING_UART1
+static int uart1_loopback(int argc, char **argv)
+{
+    static const char pattern[] = "Zynq7020 UART1 loopback";
+    struct serial_configure configure = RT_SERIAL_CONFIG_DEFAULT;
+    rt_uint32_t saved_mode;
+    rt_size_t index;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+
+    if (zynq_uart_configure(&uart1.serial, &configure) != RT_EOK)
+    {
+        rt_kprintf("uart1 configure failed; check the UART1 clock\n");
+        return -RT_ERROR;
+    }
+
+    UART_IDR(uart1.base) = 0xFFFFFFFFU;
+    while (!(UART_SR(uart1.base) & UART_SR_RXEMPTY))
+    {
+        (void)UART_FIFO(uart1.base);
+    }
+
+    saved_mode = UART_MR(uart1.base);
+    UART_MR(uart1.base) = (saved_mode & ~UART_MR_CHMODE_MASK) |
+                          UART_MR_CHMODE_LOCAL;
+
+    for (index = 0; index < sizeof(pattern) - 1U; index++)
+    {
+        rt_tick_t deadline;
+
+        while (UART_SR(uart1.base) & UART_SR_TXFULL)
+        {
+        }
+        UART_FIFO(uart1.base) = (rt_uint8_t)pattern[index];
+
+        deadline = rt_tick_get() + rt_tick_from_millisecond(100);
+        while (UART_SR(uart1.base) & UART_SR_RXEMPTY)
+        {
+            if ((rt_int32_t)(rt_tick_get() - deadline) >= 0)
+            {
+                UART_MR(uart1.base) = saved_mode;
+                rt_kprintf("uart1 loopback timeout at byte %u\n", (unsigned int)index);
+                return -RT_ETIMEOUT;
+            }
+        }
+        if ((UART_FIFO(uart1.base) & 0xffU) != (rt_uint8_t)pattern[index])
+        {
+            UART_MR(uart1.base) = saved_mode;
+            rt_kprintf("uart1 loopback compare failed at byte %u\n", (unsigned int)index);
+            return -RT_ERROR;
+        }
+    }
+
+    UART_MR(uart1.base) = saved_mode;
+    rt_kprintf("uart1 internal loopback passed: %u bytes\n",
+               (unsigned int)(sizeof(pattern) - 1U));
+    return RT_EOK;
+}
+MSH_CMD_EXPORT(uart1_loopback, test PS UART1 in local loopback mode);
+#endif

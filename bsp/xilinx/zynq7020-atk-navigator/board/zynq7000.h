@@ -15,6 +15,8 @@
 
 #define ZYNQ_UART0_BASE                0xE0000000U
 #define ZYNQ_UART0_IRQ                 59
+#define ZYNQ_UART1_BASE                0xE0001000U
+#define ZYNQ_UART1_IRQ                 82
 #define ZYNQ_UART_INPUT_CLOCK_HZ       100000000U
 
 #define ZYNQ_GPIO_BASE                 0xE000A000U
