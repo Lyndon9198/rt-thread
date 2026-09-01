@@ -27,6 +27,7 @@ The current BSP provides:
 - PS USB0 host through the ULPI PHY and onboard USB 2.0 hub
 - 1024x600 RGB888 LCD through AXI VDMA and VTC
 - FT5246 capacitive touch device on the software I2C bus
+- Three active-low PL keys through the RT-Thread input framework
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
@@ -276,6 +277,22 @@ validation found chip ID `0x54`, firmware `0x14`, and vendor `0x82`.
 finger is on the panel. Applications should normally open `touch0` with
 `RT_DEVICE_FLAG_INT_RX`, install an RX callback, and read up to five
 `struct rt_touch_data` records when GPIO60 asserts.
+
+When `BSP_USING_BOARD_KEYS` is enabled, PL_KEY0 (GPIO55/L14), PL_KEY1
+(GPIO56/K16), and PL_RESET (GPIO57/N16) are registered together as `input0`.
+They are active-low inputs with PL pull-ups, both-edge interrupts, and 10 ms
+software-timer debounce. The reported input codes are `BTN_2`, `BTN_3`, and
+`KEY_RESTART`, respectively.
+
+```text
+key_info
+```
+
+`key_info` shows raw levels, debounced states and event counters. Keep all
+three pins configured as inputs. Software-driven low-level testing is unsafe
+on these board-control nets and can reset the board. In particular, GPIO57 is
+the PL_RESET net; its input event is best-effort because hardware reset can
+occur before software handles the key transition.
 
 ## Notes
 

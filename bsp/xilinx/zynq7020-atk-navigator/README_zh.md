@@ -45,6 +45,7 @@ Hardware Drivers Config
 | `BSP_USING_AXI_GPIO0` | PL LED，pin 118/119 |
 | `BSP_USING_TOUCH_I2C` | FT5246 使用的软件 I2C `swi2c0` |
 | `BSP_USING_FT5246` | FT5246 标准触摸设备 `touch0` |
+| `BSP_USING_BOARD_KEYS` | PL 三路按键标准输入设备 `input0` |
 | `BSP_USING_WDT` | PS Watchdog `wdt` |
 | `BSP_USING_TTC0_TIMER0` | TTC0 Timer0 `timer0` |
 | `BSP_USING_CAN0` | PS CAN0 `can0` |
@@ -158,6 +159,21 @@ touch_read
 `0x14`、vendor `0x82`。手指按住屏幕时执行 `touch_read` 可打印一次触点
 坐标。应用通常应以 `RT_DEVICE_FLAG_INT_RX` 打开 `touch0`、设置 RX 回调，
 在 GPIO60 触发后读取最多 5 个 `struct rt_touch_data`。
+
+## 板载按键
+
+PL_KEY0（GPIO55/L14）、PL_KEY1（GPIO56/K16）和 PL_RESET（GPIO57/N16）
+均为低有效、PL 内部上拉输入。驱动把它们注册到标准 input 设备 `input0`，
+使用双边沿中断和 10 ms 软件定时器消抖，分别上报 `BTN_2`、`BTN_3` 和
+`KEY_RESTART`。
+
+```text
+key_info
+```
+
+`key_info` 显示原始电平、消抖状态和事件计数。三路信号必须始终保持输入；
+软件主动拉低这些板级控制信号可能触发整板复位。GPIO57 是 PL_RESET，禁止
+配置为输出；由于硬件可能先于软件完成复位，其输入事件只能尽力上报。
 
 ## USB0 Host
 

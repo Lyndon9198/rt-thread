@@ -56,6 +56,12 @@ config BSP_USING_FT5246
     select RT_USING_TOUCH
     select RT_TOUCH_PIN_IRQ
 
+config BSP_USING_BOARD_KEYS
+    bool "Enable PL KEY0, KEY1 and RESET input device"
+    default y
+    depends on BSP_USING_GPIO
+    select RT_USING_INPUT
+
 config BSP_USING_SD1_EMMC
     bool "Enable SD1 eMMC"
     default y

@@ -30,6 +30,9 @@ if not GetDepend('BSP_USING_RGB_LCD'):
 if not GetDepend('BSP_USING_FT5246'):
     SrcRemove(src, ['drv_ft5246.c'])
 
+if not GetDepend('BSP_USING_BOARD_KEYS'):
+    SrcRemove(src, ['drv_keys.c'])
+
 if not GetDepend('BSP_USING_GEM0'):
     SrcRemove(src, ['builtin_fdt.S', 'drv_gem_dma.c'])
 
