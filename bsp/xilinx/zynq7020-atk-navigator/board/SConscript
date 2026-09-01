@@ -21,6 +21,9 @@ if not GetDepend('BSP_USING_CAN0'):
 if not GetDepend('BSP_USING_QSPI0'):
     SrcRemove(src, ['drv_qspi.c'])
 
+if not GetDepend('BSP_USING_USB0_HOST'):
+    SrcRemove(src, ['drv_usb.c'])
+
 if not GetDepend('BSP_USING_GEM0'):
     SrcRemove(src, ['builtin_fdt.S', 'drv_gem_dma.c'])
 

@@ -280,7 +280,9 @@
 
 /* ---------------- EHCI Configuration ---------------- */
 
+#ifndef CONFIG_USB_EHCI_HCCR_OFFSET
 #define CONFIG_USB_EHCI_HCCR_OFFSET     (0x0)
+#endif
 #define CONFIG_USB_EHCI_FRAME_LIST_SIZE 1024
 #define CONFIG_USB_EHCI_QH_NUM          10
 #define CONFIG_USB_EHCI_QTD_NUM         (CONFIG_USB_EHCI_QH_NUM * 3)

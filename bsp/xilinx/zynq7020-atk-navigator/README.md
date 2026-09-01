@@ -21,6 +21,9 @@ The current BSP provides:
 - TTC0 timer0 clock-timer device
 - PS CAN0 device
 - PS GEM0 Ethernet with the external RTL8211E PHY
+- PS SD1 with the board-mounted 8 GB eMMC
+- PS QSPI0 with the 32 MiB W25Q256 flash
+- PS USB0 host through the ULPI PHY and onboard USB 2.0 hub
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
@@ -181,6 +184,31 @@ the complete sector is blank. It erases the test data afterwards and verifies
 that the sector has returned to all `0xff`. The command refuses to modify a
 non-empty sector. Do not use `sf erase`, `sf write` or `sf bench` on an address
 containing the boot image or U-Boot environment.
+
+When `BSP_USING_USB0_HOST` is enabled, CherryUSB uses the Zynq PS USB0
+ChipIdea/EHCI controller at `0xe0002000`, interrupt 53, and its ULPI PHY. MIO9
+controls the active-low PHY reset. The saved configuration selects the custom
+EHCI host port, HID and mass-storage classes, D-cache maintenance, and a USB
+mass-storage mount-point pattern of `/usb%c`.
+
+The controller and attached devices can be inspected from MSH:
+
+```text
+lsusb
+lsusb -v
+list device
+```
+
+Hardware validation enumerated the onboard Genesys Logic USB 2.0 high-speed
+hub (`05e3:0608`) as `/dev/hub2`. A USB disk appears as an RT-Thread block
+device and is mounted below `/usb*` when its filesystem is supported. Do not
+place the mount point at `/`, because the eMMC and USB automount paths would
+then conflict.
+
+The controller performs DMA from cached DDR. Keep both
+`CONFIG_USB_DCACHE_ENABLE` and `CONFIG_USB_EHCI_DESC_DCACHE_ENABLE` enabled;
+disabling either can cause corrupted descriptors or control transfers on the
+Cortex-A9.
 
 UART0 uses 115200 baud, 8 data bits, no parity, and 1 stop bit.
 

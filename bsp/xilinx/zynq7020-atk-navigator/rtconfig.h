@@ -244,6 +244,23 @@
 #define RT_USING_OFW_BUS_RANGES_NUMBER 4
 #define RT_USING_PIN
 #define RT_USING_CLK
+#define RT_USING_CHERRYUSB
+#define RT_CHERRYUSB_HOST
+#define RT_CHERRYUSB_HOST_EHCI_CUSTOM
+#define RT_CHERRYUSB_HOST_HID
+#define RT_CHERRYUSB_HOST_MSC
+#define CONFIG_USBHOST_PSC_PRIO 0
+#define CONFIG_USBHOST_PSC_STACKSIZE 4096
+#define CONFIG_USBHOST_REQUEST_BUFFER_LEN 512
+#define CONFIG_USBHOST_CONTROL_TRANSFER_TIMEOUT 500
+#define CONFIG_USBHOST_SERIAL_RX_SIZE 2048
+#define RT_LWIP_PBUF_POOL_BUFSIZE 1600
+#define CONFIG_USB_DFS_MOUNT_POINT "/usb%c"
+
+/* Select USB host template, please select class driver first */
+
+#define RT_TEST_USBH_HID 0
+/* end of Select USB host template, please select class driver first */
 
 /* SoC (System on Chip) Drivers */
 
@@ -604,6 +621,7 @@
 #define BSP_USING_TOUCH_I2C
 #define BSP_USING_SD1_EMMC
 #define BSP_USING_QSPI0
+#define BSP_USING_USB0_HOST
 #define BSP_USING_WDT
 #define BSP_USING_TTC0_TIMER0
 #define BSP_USING_CAN0

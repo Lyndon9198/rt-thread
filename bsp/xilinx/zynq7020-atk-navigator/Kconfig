@@ -58,6 +58,14 @@ config BSP_USING_QSPI0
     select RT_SFUD_USING_SFDP
     select RT_SFUD_USING_FLASH_INFO_TABLE
 
+config BSP_USING_USB0_HOST
+    bool "Enable PS USB0 host (ULPI)"
+    default y
+    select RT_USING_CHERRYUSB
+    select RT_CHERRYUSB_HOST
+    select RT_CHERRYUSB_HOST_HID
+    select RT_CHERRYUSB_HOST_MSC
+
 config RT_SOFT_I2C0_HAS_PIN_DEFAULT
     default y if BSP_USING_TOUCH_I2C
 

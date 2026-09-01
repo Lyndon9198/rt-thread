@@ -414,6 +414,10 @@ static struct ehci_qh_hw *ehci_control_urb_init(struct usbh_bus *bus, struct usb
 
     qh->urb = urb;
     urb->hcpriv = qh;
+#ifdef CONFIG_USB_DCACHE_ENABLE
+    usb_dcache_clean((uintptr_t)setup,
+                     USB_ALIGN_UP(sizeof(struct usb_setup_packet), CONFIG_USB_ALIGN_SIZE));
+#endif
     /* add qh into async list */
     ehci_qh_add_head(&g_async_qh_head[bus->hcd.hcd_id], qh);
 
