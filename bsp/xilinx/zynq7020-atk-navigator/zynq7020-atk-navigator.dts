@@ -109,5 +109,20 @@
             disable-wp;
             no-1-8-v;
         };
+
+        qspi0: spi@e000d000 {
+            compatible = "xlnx,zynq-qspi-1.0";
+            reg = <0xe000d000 0x1000>;
+            interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
+            clock-frequency = <200000000>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            flash@0 {
+                compatible = "jedec,spi-nor";
+                reg = <0>;
+                spi-max-frequency = <50000000>;
+            };
+        };
     };
 };

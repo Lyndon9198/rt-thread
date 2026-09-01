@@ -50,6 +50,14 @@ config BSP_USING_SD1_EMMC
     select RT_USING_SDIO
     select RT_SDIO_SDHCI_ARASAN
 
+config BSP_USING_QSPI0
+    bool "Enable PS QSPI0 and W25Q256"
+    default y
+    select RT_USING_SPI
+    select RT_USING_SFUD
+    select RT_SFUD_USING_SFDP
+    select RT_SFUD_USING_FLASH_INFO_TABLE
+
 config RT_SOFT_I2C0_HAS_PIN_DEFAULT
     default y if BSP_USING_TOUCH_I2C
 

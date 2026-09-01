@@ -164,6 +164,24 @@ devfs. On the verified 8 GB eMMC, RT-Thread reports `sd0`, `sd0p0` and
 Do not run `mkfs` on a device that contains the board's existing boot or Linux
 partitions.
 
+When `BSP_USING_QSPI0` is enabled, the PS QSPI controller is registered as
+`qspi0`, its CS0 device as `qspi00`, and the W25Q256 is probed by SFUD as
+`nor0`. The verified input clock is 200 MHz and the SPI clock is 50 MHz. Basic
+read-only checks are:
+
+```text
+qspi_id
+qspi_test
+sf probe qspi00
+sf read 0 64
+```
+
+`qspi_test rw` tests write, read and erase at the final 4 KiB sector only when
+the complete sector is blank. It erases the test data afterwards and verifies
+that the sector has returned to all `0xff`. The command refuses to modify a
+non-empty sector. Do not use `sf erase`, `sf write` or `sf bench` on an address
+containing the boot image or U-Boot environment.
+
 UART0 uses 115200 baud, 8 data bits, no parity, and 1 stop bit.
 
 ## Notes
