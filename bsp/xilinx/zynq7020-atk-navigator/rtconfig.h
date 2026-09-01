@@ -192,7 +192,24 @@
 #define RT_SOFT_I2C0_TIMING_DELAY 10
 #define RT_SOFT_I2C0_TIMING_TIMEOUT 10
 #define RT_USING_PHY_V2
+#define RT_USING_SDIO
+#define RT_SDIO_STACK_SIZE 4096
+#define RT_SDIO_THREAD_PRIORITY 15
+#define RT_MMCSD_STACK_SIZE 4096
+#define RT_MMCSD_THREAD_PRIORITY 22
+#define RT_MMCSD_MAX_PARTITION 16
+#define RT_USING_SDHCI
+#define RT_SDIO_SDHCI_ARASAN
 #define RT_USING_WDT
+#define RT_USING_BLK
+
+/* Partition Types */
+
+#define RT_BLK_PARTITION_DFS
+#define RT_BLK_PARTITION_EFI
+/* end of Partition Types */
+#define RT_USING_REGULATOR
+#define RT_REGULATOR_GPIO
 
 /* Power Management (PM) Domains device drivers */
 
@@ -563,6 +580,7 @@
 #define BSP_USING_GPIO
 #define BSP_USING_AXI_GPIO0
 #define BSP_USING_TOUCH_I2C
+#define BSP_USING_SD1_EMMC
 #define BSP_USING_WDT
 #define BSP_USING_TTC0_TIMER0
 #define BSP_USING_CAN0

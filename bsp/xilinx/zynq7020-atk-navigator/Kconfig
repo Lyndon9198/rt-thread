@@ -44,6 +44,12 @@ config BSP_USING_TOUCH_I2C
     select RT_USING_SOFT_I2C
     select RT_USING_SOFT_I2C0
 
+config BSP_USING_SD1_EMMC
+    bool "Enable SD1 eMMC"
+    default y
+    select RT_USING_SDIO
+    select RT_SDIO_SDHCI_ARASAN
+
 config RT_SOFT_I2C0_HAS_PIN_DEFAULT
     default y if BSP_USING_TOUCH_I2C
 

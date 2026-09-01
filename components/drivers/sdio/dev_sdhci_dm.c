@@ -70,12 +70,36 @@ struct rt_sdhci_host *rt_sdhci_pltfm_init(struct rt_platform_device *pdev,
     struct rt_device *dev = &pdev->parent;
 
     ioaddr = rt_dm_dev_iomap(dev, 0);
+#if defined(RT_USING_OFW) && defined(ARCH_ARM_CORTEX_A9)
+    if (!ioaddr)
+    {
+        rt_uint64_t address;
+
+        if (!rt_dm_dev_get_address(dev, 0, &address, RT_NULL))
+        {
+            ioaddr = (void *)(rt_ubase_t)address;
+        }
+    }
+#endif
     if (!ioaddr)
     {
         return RT_NULL;
     }
 
     irq = rt_dm_dev_get_irq(dev, 0);
+#if defined(RT_USING_OFW) && defined(ARCH_ARM_CORTEX_A9)
+    if (irq < 0 && dev->ofw_node)
+    {
+        rt_uint32_t type;
+        rt_uint32_t hwirq;
+
+        if (!rt_ofw_prop_read_u32_index(dev->ofw_node, "interrupts", 0, &type) &&
+            !rt_ofw_prop_read_u32_index(dev->ofw_node, "interrupts", 1, &hwirq))
+        {
+            irq = (type == 0) ? (int)(hwirq + 32U) : (int)(hwirq + 16U);
+        }
+    }
+#endif
     if (irq < 0)
     {
         return RT_NULL;

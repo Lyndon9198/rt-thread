@@ -3825,7 +3825,11 @@ int rt_sdhci_init_host(struct rt_sdhci_host *host)
     rt_work_init(&host->irq_work, sdhci_thread_irq, host);
     rt_work_init(&host->poll_work, sdhci_poll_work_fn, host);
     rt_hw_interrupt_install(host->irq, sdhci_irq, host, mmc_hostname(mmc));
+#ifdef RT_USING_PIC
     rt_pic_irq_unmask(host->irq);
+#else
+    rt_hw_interrupt_umask(host->irq);
+#endif
 
     ret = rt_mmc_add_host(mmc);
     if (ret)

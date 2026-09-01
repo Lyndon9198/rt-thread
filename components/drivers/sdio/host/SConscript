@@ -22,6 +22,9 @@ if GetDepend(['RT_SDIO_DW_MMC']):
 if GetDepend(['RT_SDIO_SDHCI_DWCMSHC']):
     src += ['sdhci-dwcmshc.c', 'sdhci-dwcmshc-platform.c']
 
+if GetDepend(['RT_SDIO_SDHCI_ARASAN']):
+    src += ['sdhci-arasan.c']
+
 group = DefineGroup('DeviceDrivers', src, depend = [''], CPPPATH = CPPPATH)
 
 Return('group')

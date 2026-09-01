@@ -101,6 +101,11 @@ int __rt_ffs(int value)
 {
     return __builtin_ffs(value);
 }
+
+unsigned long __rt_ffsl(unsigned long value)
+{
+    return __builtin_ffsl(value);
+}
 #endif
 
 rt_bool_t rt_hw_interrupt_is_disabled(void)

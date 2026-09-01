@@ -144,6 +144,12 @@ The script is named `rtthread.scr`, rather than `boot.scr`, so the existing
 Linux boot script remains available. Restore the previous `bootcmd` to return
 to Linux.
 
+When `BSP_USING_SD1_EMMC` is enabled, the same eMMC is registered through the
+RT-Thread MMC/SD stack. The first implementation uses the Zynq SD1 Arasan
+SDHCI controller at `0xe0101000`, interrupt 79, a 4-bit bus and a maximum card
+clock of 50 MHz. The device is non-removable and does not use a card-detect or
+write-protect signal.
+
 UART0 uses 115200 baud, 8 data bits, no parity, and 1 stop bit.
 
 ## Notes

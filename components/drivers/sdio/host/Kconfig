@@ -25,4 +25,11 @@ config RT_SDIO_SDHCI_DWCMSHC
     select RT_USING_SDHCI
     default n
 
+config RT_SDIO_SDHCI_ARASAN
+    bool "Arasan SDHCI controller"
+    depends on RT_USING_OFW
+    select RT_USING_SDHCI
+    select RT_USING_REGULATOR
+    default n
+
 osource "$(SOC_DM_SDIO_DIR)/Kconfig"
