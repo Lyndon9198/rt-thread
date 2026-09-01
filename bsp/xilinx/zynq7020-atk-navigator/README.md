@@ -26,6 +26,7 @@ The current BSP provides:
 - PS QSPI0 with the 32 MiB W25Q256 flash
 - PS USB0 host through the ULPI PHY and onboard USB 2.0 hub
 - 1024x600 RGB888 LCD through AXI VDMA and VTC
+- FT5246 capacitive touch device on the software I2C bus
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
@@ -257,6 +258,24 @@ the VTC control value is `0x00000007` and its error register is zero. Hardware
 validation produced continuous active video with VDMA status `0x00011000`
 and no DMA error bits. The PL design drives LCD reset and backlight from its
 reset signal, so they are not RT-Thread GPIO pins.
+
+When `BSP_USING_FT5246` is enabled, the controller at I2C address `0x38` is
+registered as the standard RT-Thread touch device `touch0`. It supports five
+contacts over `swi2c0`; GPIO60 is its active-low, falling-edge interrupt. The
+panel reports coordinates in Y-X order, so the driver swaps them into the
+LCD's 1024x600 X-Y coordinate system.
+
+```text
+touch_info
+touch_read
+```
+
+`touch_info` reads the controller identity and interrupt level. Hardware
+validation found chip ID `0x54`, firmware `0x14`, and vendor `0x82`.
+`touch_read` samples one frame and prints active contacts; run it while a
+finger is on the panel. Applications should normally open `touch0` with
+`RT_DEVICE_FLAG_INT_RX`, install an RX callback, and read up to five
+`struct rt_touch_data` records when GPIO60 asserts.
 
 ## Notes
 

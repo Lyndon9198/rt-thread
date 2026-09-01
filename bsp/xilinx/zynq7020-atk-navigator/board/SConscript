@@ -27,6 +27,9 @@ if not GetDepend('BSP_USING_USB0_HOST'):
 if not GetDepend('BSP_USING_RGB_LCD'):
     SrcRemove(src, ['drv_lcd.c'])
 
+if not GetDepend('BSP_USING_FT5246'):
+    SrcRemove(src, ['drv_ft5246.c'])
+
 if not GetDepend('BSP_USING_GEM0'):
     SrcRemove(src, ['builtin_fdt.S', 'drv_gem_dma.c'])
 

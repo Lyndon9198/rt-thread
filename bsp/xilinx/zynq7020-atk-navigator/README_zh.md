@@ -44,6 +44,7 @@ Hardware Drivers Config
 | `BSP_USING_GPIO` | PS MIO/EMIO `pin` 设备 |
 | `BSP_USING_AXI_GPIO0` | PL LED，pin 118/119 |
 | `BSP_USING_TOUCH_I2C` | FT5246 使用的软件 I2C `swi2c0` |
+| `BSP_USING_FT5246` | FT5246 标准触摸设备 `touch0` |
 | `BSP_USING_WDT` | PS Watchdog `wdt` |
 | `BSP_USING_TTC0_TIMER0` | TTC0 Timer0 `timer0` |
 | `BSP_USING_CAN0` | PS CAN0 `can0` |
@@ -140,6 +141,23 @@ halted 位为 0、`0x00000ff0` 范围内无错误位，VTC control 为
 `0x00000007`、error 为 0。实机读取到 VDMA status `0x00011000`，其中不含
 DMA 错误位，VTC 持续输出 active video。LCD 复位和背光由 PL 复位逻辑
 直接驱动，不属于 RT-Thread GPIO。
+
+## FT5246 触摸
+
+FT5246 使用 `swi2c0`，7-bit 地址为 `0x38`，注册为 RT-Thread 标准触摸
+设备 `touch0`，最多支持 5 点。GPIO60 是低有效、下降沿触发的中断输入。
+面板原始数据按 Y-X 顺序上报，驱动交换坐标后输出与 LCD 一致的
+1024x600 X-Y 坐标。
+
+```text
+touch_info
+touch_read
+```
+
+`touch_info` 检查芯片身份和中断电平；实机读到 chip ID `0x54`、固件
+`0x14`、vendor `0x82`。手指按住屏幕时执行 `touch_read` 可打印一次触点
+坐标。应用通常应以 `RT_DEVICE_FLAG_INT_RX` 打开 `touch0`、设置 RX 回调，
+在 GPIO60 触发后读取最多 5 个 `struct rt_touch_data`。
 
 ## USB0 Host
 
