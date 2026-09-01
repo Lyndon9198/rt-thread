@@ -71,6 +71,11 @@ config BSP_USING_USB0_HOST
     select RT_CHERRYUSB_HOST_HID
     select RT_CHERRYUSB_HOST_MSC
 
+config BSP_USING_RGB_LCD
+    bool "Enable 1024x600 RGB LCD (AXI VDMA/VTC)"
+    default y
+    select RT_USING_GRAPHIC
+
 config RT_SOFT_I2C0_HAS_PIN_DEFAULT
     default y if BSP_USING_TOUCH_I2C
 

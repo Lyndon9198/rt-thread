@@ -25,6 +25,7 @@ The current BSP provides:
 - PS SD1 with the board-mounted 8 GB eMMC
 - PS QSPI0 with the 32 MiB W25Q256 flash
 - PS USB0 host through the ULPI PHY and onboard USB 2.0 hub
+- 1024x600 RGB888 LCD through AXI VDMA and VTC
 - Cortex-A9 private timer system tick
 
 PS GPIO pin numbers 0-53 address MIO0-MIO53. Pin numbers 54-117 address
@@ -229,6 +230,33 @@ serial adapter, export the processing-system `UART1_TX` and `UART1_RX` EMIO
 signals, constrain them to suitable 3.3 V PL pins, rebuild the bitstream/XSA,
 and cross-connect TX/RX/GND. The RT-Thread driver itself does not assign PL
 pins.
+
+When `BSP_USING_RGB_LCD` is enabled, the PL display pipeline is registered as
+the RT-Thread graphic device `lcd`. The hardware path is AXI VDMA MM2S at
+`0x43000000`, AXI4-Stream Video Out, VTC at `0x43c00000`, and the RGB888
+output. The fixed panel mode is 1024x600 at a 50 MHz pixel clock. Horizontal
+timing is 1024 active, 160 front porch, 20 sync and 140 back porch; vertical
+timing is 600 active, 12 front porch, 3 sync and 20 back porch.
+
+The driver allocates one 1,843,200-byte RGB888 framebuffer from the system
+heap. Applications obtain its address, pitch and format with
+`RTGRAPHIC_CTRL_GET_INFO`, write pixels in R-G-B byte order, then issue
+`RTGRAPHIC_CTRL_RECT_UPDATE` so dirty cache lines are visible to VDMA.
+
+Use the built-in checks after boot:
+
+```text
+list device
+lcd_info
+lcd_test
+```
+
+`lcd_test` draws eight vertical color bars. A healthy `lcd_info` result has
+the VDMA halted bit clear and no bits from `0x00000ff0` set in the VDMA status;
+the VTC control value is `0x00000007` and its error register is zero. Hardware
+validation produced continuous active video with VDMA status `0x00011000`
+and no DMA error bits. The PL design drives LCD reset and backlight from its
+reset signal, so they are not RT-Thread GPIO pins.
 
 ## Notes
 

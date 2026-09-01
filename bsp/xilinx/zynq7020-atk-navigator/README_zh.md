@@ -13,7 +13,8 @@ BootROM -> FSBL -> U-Boot -> RT-Thread SMP
 
 U-Boot 将 `rtthread.bin` 加载到 `0x00200000` 后启动。当前分支已支持双核
 Cortex-A9 SMP、GICv2、MMU/Cache、1 GiB DDR、UART0、GPIO/AXI GPIO、
-软件 I2C、Watchdog、TTC、CAN0、GEM0、SD1 eMMC、QSPI Flash 和 USB0 Host。
+软件 I2C、Watchdog、TTC、CAN0、GEM0、SD1 eMMC、QSPI Flash、USB0 Host
+和 1024x600 RGB LCD。
 
 ## 构建与配置
 
@@ -50,6 +51,7 @@ Hardware Drivers Config
 | `BSP_USING_SD1_EMMC` | PS SD1 及板载 eMMC |
 | `BSP_USING_QSPI0` | PS QSPI0 及 W25Q256 |
 | `BSP_USING_USB0_HOST` | PS USB0 EHCI Host、HID、U 盘 |
+| `BSP_USING_RGB_LCD` | AXI VDMA/VTC RGB888 显示设备 `lcd` |
 
 默认 `.config` 已选择 USB Host 的 `ehci_custom` 控制器。若在 CherryUSB
 菜单中重新选择 Host IP，必须保持 `ehci_custom`，否则不会编译 Zynq EHCI
@@ -114,6 +116,30 @@ uart1_loopback
 USB 转串口，需在 Vivado 中导出 PS 的 `UART1_TX`/`UART1_RX` EMIO，约束到
 合适的 3.3 V PL 管脚，重新生成 bitstream/XSA，并交叉连接 TX、RX 和 GND。
 RT-Thread 驱动不会替 Vivado 分配 PL 管脚。
+
+## RGB LCD
+
+显示通路为 `AXI VDMA MM2S -> AXI4-Stream Video Out -> RGB888`。VDMA
+基地址为 `0x43000000`，VTC 基地址为 `0x43c00000`。固定显示模式为
+1024x600、RGB888、50 MHz 像素时钟；水平前肩/同步/后肩为 160/20/140，
+垂直前肩/同步/后肩为 12/3/20。
+
+驱动注册图形设备 `lcd`，并从系统堆分配 1,843,200 字节单 framebuffer。
+应用通过 `RTGRAPHIC_CTRL_GET_INFO` 获取地址、pitch 和像素格式；写入像素后
+必须调用 `RTGRAPHIC_CTRL_RECT_UPDATE`，由驱动清理对应 D-cache，确保 VDMA
+读取到新内容。内存中的每个像素按 R、G、B 三个字节排列。
+
+```text
+list device
+lcd_info
+lcd_test
+```
+
+`lcd_test` 刷新八条竖向彩条。正常情况下 `lcd_info` 中 VDMA status 的
+halted 位为 0、`0x00000ff0` 范围内无错误位，VTC control 为
+`0x00000007`、error 为 0。实机读取到 VDMA status `0x00011000`，其中不含
+DMA 错误位，VTC 持续输出 active video。LCD 复位和背光由 PL 复位逻辑
+直接驱动，不属于 RT-Thread GPIO。
 
 ## USB0 Host
 
