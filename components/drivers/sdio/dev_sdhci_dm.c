@@ -69,9 +69,9 @@ struct rt_sdhci_host *rt_sdhci_pltfm_init(struct rt_platform_device *pdev,
     struct rt_sdhci_host *host;
     struct rt_device *dev = &pdev->parent;
 
-    ioaddr = rt_dm_dev_iomap(dev, 0);
 #if defined(RT_USING_OFW) && defined(ARCH_ARM_CORTEX_A9)
-    if (!ioaddr)
+    ioaddr = RT_NULL;
+    if (dev->ofw_node)
     {
         rt_uint64_t address;
 
@@ -80,6 +80,8 @@ struct rt_sdhci_host *rt_sdhci_pltfm_init(struct rt_platform_device *pdev,
             ioaddr = (void *)(rt_ubase_t)address;
         }
     }
+#else
+    ioaddr = rt_dm_dev_iomap(dev, 0);
 #endif
     if (!ioaddr)
     {

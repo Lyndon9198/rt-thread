@@ -8,6 +8,7 @@
 #include <rtthread.h>
 
 #include <board.h>
+#include <drivers/core/power.h>
 #include <interrupt.h>
 #ifdef RT_USING_OFW
 #include <drivers/ofw_fdt.h>
@@ -36,6 +37,28 @@ const rt_uint32_t platform_mem_desc_size =
 static void idle_wfi(void)
 {
     __asm__ volatile ("wfi" ::: "memory");
+}
+
+#define ZYNQ_SLCR_BASE          0xf8000000U
+#define ZYNQ_SLCR_UNLOCK_OFFSET 0x00000008U
+#define ZYNQ_SLCR_UNLOCK_KEY    0x0000df0dU
+#define ZYNQ_PSS_RST_OFFSET     0x00000200U
+
+static void zynq_system_reset(void)
+{
+    volatile rt_uint32_t *slcr = (volatile rt_uint32_t *)ZYNQ_SLCR_BASE;
+
+    slcr[ZYNQ_SLCR_UNLOCK_OFFSET / sizeof(*slcr)] = ZYNQ_SLCR_UNLOCK_KEY;
+    slcr[ZYNQ_PSS_RST_OFFSET / sizeof(*slcr)] = 1U;
+
+    __asm__ volatile ("dsb\n"
+                      "isb\n"
+                      ::: "memory");
+
+    while (1)
+    {
+        __asm__ volatile ("wfi" ::: "memory");
+    }
 }
 
 void zynq_scu_enable(void)
@@ -74,6 +97,7 @@ void rt_hw_board_init(void)
     RT_ASSERT(rt_fdt_unflatten() == RT_EOK);
 #endif
     rt_components_board_init();
+    rt_dm_machine_reset = zynq_system_reset;
     rt_console_set_device(RT_CONSOLE_DEVICE_NAME);
     rt_thread_idle_sethook(idle_wfi);
 

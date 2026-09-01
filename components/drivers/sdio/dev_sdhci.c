@@ -4037,5 +4037,5 @@ void rt_sdhci_ios_set(struct rt_mmc_host *mmc, struct rt_mmcsd_io_cfg *ios)
 void rt_sdhci_free_host(struct rt_sdhci_host *host)
 {
     rt_sdhci_cleanup_host(host);
-    rt_free(host);
+    rt_free(host->mmc);
 }

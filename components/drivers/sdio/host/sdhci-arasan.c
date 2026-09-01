@@ -29,7 +29,8 @@ static const struct rt_sdhci_ops sdhci_arasan_ops =
 static const struct rt_sdhci_pltfm_data sdhci_arasan_data =
 {
     .ops = &sdhci_arasan_ops,
-    .quirks = RT_SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN,
+    .quirks = RT_SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN |
+              RT_SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK,
     .quirks2 = RT_SDHCI_QUIRK2_BROKEN_64_BIT_DMA,
 };
 

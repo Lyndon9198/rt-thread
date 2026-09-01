@@ -148,7 +148,21 @@ When `BSP_USING_SD1_EMMC` is enabled, the same eMMC is registered through the
 RT-Thread MMC/SD stack. The first implementation uses the Zynq SD1 Arasan
 SDHCI controller at `0xe0101000`, interrupt 79, a 4-bit bus and a maximum card
 clock of 50 MHz. The device is non-removable and does not use a card-detect or
-write-protect signal.
+write-protect signal. Elm-FAT is enabled so an existing FAT partition can be
+mounted without formatting it. For example, the first detected partition can
+be inspected with:
+
+```text
+mount sd0p0 / elm
+ls /
+umount /
+```
+
+The root mount point is used here because the default root filesystem is
+devfs. On the verified 8 GB eMMC, RT-Thread reports `sd0`, `sd0p0` and
+`sd0p1`, selects High Speed mode, and detects 64 MiB and 128 MiB partitions.
+Do not run `mkfs` on a device that contains the board's existing boot or Linux
+partitions.
 
 UART0 uses 115200 baud, 8 data bits, no parity, and 1 stop bit.
 
